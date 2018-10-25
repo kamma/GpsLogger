@@ -2,11 +2,15 @@ package cz.kamma.gpslogger;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.pm.PackageManager;
+import android.location.GpsClock;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.Settings;
@@ -23,7 +27,10 @@ import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.text.DecimalFormat;
+import java.text.NumberFormat;
 import java.util.Date;
+import java.util.Locale;
 
 public class MainActivity extends Activity implements LocationListener {
 
@@ -35,6 +42,8 @@ public class MainActivity extends Activity implements LocationListener {
 
 	long start = -1;
 	boolean running = false;
+
+	String fileName;
 
 	static final String TAG = MainActivity.class.getCanonicalName();
 
@@ -85,12 +94,14 @@ public class MainActivity extends Activity implements LocationListener {
 			@Override
 			public void onClick(View v) {
 				Log.i(TAG, "Start replay");
-				running = true;
-				buttonReplayStop.setEnabled(true);
-				buttonReplay.setEnabled(false);
-				buttonStop.setEnabled(false);
-				buttonStart.setEnabled(false);
-				startReplay();
+				openSelectFileDialog();
+				if (fileName != null) {
+					buttonReplayStop.setEnabled(true);
+					buttonReplay.setEnabled(false);
+					buttonStop.setEnabled(false);
+					buttonStart.setEnabled(false);
+					startReplay();
+				}
 			}
 		});
 
@@ -98,7 +109,6 @@ public class MainActivity extends Activity implements LocationListener {
 			@Override
 			public void onClick(View v) {
 				Log.i(TAG, "Stop replay");
-				running = false;
 				buttonReplayStop.setEnabled(false);
 				buttonReplay.setEnabled(true);
 				buttonStop.setEnabled(false);
@@ -112,39 +122,65 @@ public class MainActivity extends Activity implements LocationListener {
 		if (!canAccessLocation()) {
 			requestPermissions(INITIAL_PERMS, LOCATION_REQUEST);
 		}
-		locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 
-		locationManager.addTestProvider(LocationManager.GPS_PROVIDER, true, true, true, false, true, true, true, 3, 1);
-		locationManager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, true);
+		running = true;
+		textView.setText("");
 
-		File root = Environment.getExternalStorageDirectory();
+		AsyncTask.execute(new Runnable() {
+			@Override
+			public void run() {
+				locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 
-		try {
-			File file = new File(root, "Download/gpsdata.txt");
-			BufferedReader br = new BufferedReader(new FileReader(file));
-			String line = br.readLine();
-			while (line != null && running == true) {
-				String[] data = line.split(" ");
-				if (data.length == 4) {
-					long delay = Long.parseLong(data[0]);
-					
-					//latitude 50.19085392
-					//longitude 15.05299389
-					double
-					
-					double latitude = Double.parseDouble(data[1]);
-					double longitude = Double.parseDouble(data[2]);
-					double altitude = Double.parseDouble(data[3]);
-					long sleepTime = (long) (Math.random() * 50);
-					Thread.sleep((Math.random()>0.5?sleepTime+1000:1000-sleepTime));
-					setMockLocation(latitude, longitude, altitude);
+				locationManager.addTestProvider(LocationManager.GPS_PROVIDER, true, true, true, false, true, true, true,
+						3, 1);
+				locationManager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, true);
+
+				File root = Environment.getExternalStorageDirectory();
+
+				try {
+					File file = new File(root, "Download/gpsdata.txt");
+					BufferedReader br = new BufferedReader(new FileReader(file));
+					String line = br.readLine();
+					while (line != null && running == true) {
+						String[] data = line.split(" ");
+						if (data.length == 4) {
+							long delay = Long.parseLong(data[0]);
+							double latitude = Double.parseDouble(data[1]);
+							double longitude = Double.parseDouble(data[2]);
+							double altitude = Double.parseDouble(data[3]);
+							Log.i(TAG, "Original location: " + latitude + ", " + longitude + ", " + altitude);
+							long sleepTime = (long) (Math.random() * 50);
+							Thread.sleep((Math.random() > 0.5 ? sleepTime + 1000 : 1000 - sleepTime));
+							setMockLocation(randomizeValue(latitude, 0.000001), randomizeValue(longitude, 0.000001),
+									randomizeAltitude(altitude, 0.1));
+						}
+						line = br.readLine();
+					}
+					br.close();
+					buttonReplayStop.setEnabled(false);
+					buttonReplay.setEnabled(true);
+					buttonStop.setEnabled(false);
+					buttonStart.setEnabled(true);
+				} catch (Exception e) {
+					e.printStackTrace();
+					Toast.makeText(getApplicationContext(), "Cannot parse GPS data file.", Toast.LENGTH_SHORT).show();
 				}
-				line = br.readLine();
 			}
-			br.close();
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+		});
+
+	}
+
+	private static double randomizeValue(double start, double diff) {
+		NumberFormat nf = NumberFormat.getInstance(Locale.US);
+		DecimalFormat df = (DecimalFormat) nf;
+		df.applyPattern("#.########");
+		double rnd = Math.random();
+		return Double.parseDouble(df.format(start + (rnd * diff)));
+	}
+
+	private static double randomizeAltitude(double start, double diff) {
+		int rnd = (int) (Math.random() * 100);
+		return start + (rnd * diff * 0.1);
 	}
 
 	private void setMockLocation(double latitude, double longitude, double altitude) {
@@ -172,11 +208,40 @@ public class MainActivity extends Activity implements LocationListener {
 			}
 		}
 		try {
-			Log.i(TAG, "Setting location...");
+			Log.i(TAG, "Setting modified location: " + latitude + ", " + longitude + ", " + altitude);
+			textView.append(latitude + ", " + longitude + ", " + altitude);
 			locationManager.setTestProviderLocation(LocationManager.GPS_PROVIDER, newLocation);
 		} catch (SecurityException e) {
 			e.printStackTrace();
 		}
+	}
+
+	private void openSelectFileDialog() {
+		String THEME_PATH_PREFIX = "Download";
+		File extStorage = Environment.getExternalStorageDirectory();
+		File file = new File(extStorage, THEME_PATH_PREFIX);
+
+		final String[] fileNames = file.list();
+		if (fileNames == null || fileNames.length < 1) {
+			Toast.makeText(MainActivity.this, "No file found on " + THEME_PATH_PREFIX, Toast.LENGTH_SHORT).show();
+			return;
+		}
+		new AlertDialog.Builder(MainActivity.this).setTitle("Choose file")
+				.setSingleChoiceItems(fileNames, -1, new DialogInterface.OnClickListener() {
+					public void onClick(DialogInterface dialog, int whichButton) {
+						fileName = fileNames[whichButton];
+					}
+				}).setPositiveButton("OK", new DialogInterface.OnClickListener() {
+					public void onClick(DialogInterface dialog, int whichButton) {
+						if (fileName == null || fileName.length() < 1) {
+							Toast.makeText(MainActivity.this, "No file selected.", Toast.LENGTH_SHORT).show();
+						}
+					}
+				}).setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+					public void onClick(DialogInterface dialog, int whichButton) {
+						fileName = null;
+					}
+				}).create().show();
 	}
 
 	private void stopReplay() {
