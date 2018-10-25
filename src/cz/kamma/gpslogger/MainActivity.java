@@ -6,14 +6,12 @@ import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.pm.PackageManager;
-import android.location.GpsClock;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Environment;
-import android.provider.Settings;
 import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
@@ -95,13 +93,6 @@ public class MainActivity extends Activity implements LocationListener {
 			public void onClick(View v) {
 				Log.i(TAG, "Start replay");
 				openSelectFileDialog();
-				if (fileName != null) {
-					buttonReplayStop.setEnabled(true);
-					buttonReplay.setEnabled(false);
-					buttonStop.setEnabled(false);
-					buttonStart.setEnabled(false);
-					startReplay();
-				}
 			}
 		});
 
@@ -135,10 +126,11 @@ public class MainActivity extends Activity implements LocationListener {
 						3, 1);
 				locationManager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, true);
 
-				File root = Environment.getExternalStorageDirectory();
-
 				try {
-					File file = new File(root, "Download/gpsdata.txt");
+					String THEME_PATH_PREFIX = "Download";
+					File extStorage = Environment.getExternalStorageDirectory();
+					File root = new File(extStorage, THEME_PATH_PREFIX);
+					File file = new File(root, fileName);
 					BufferedReader br = new BufferedReader(new FileReader(file));
 					String line = br.readLine();
 					while (line != null && running == true) {
@@ -163,7 +155,7 @@ public class MainActivity extends Activity implements LocationListener {
 					buttonStart.setEnabled(true);
 				} catch (Exception e) {
 					e.printStackTrace();
-					Toast.makeText(getApplicationContext(), "Cannot parse GPS data file.", Toast.LENGTH_SHORT).show();
+					Toast.makeText(MainActivity.this, "Cannot parse GPS data file.", Toast.LENGTH_SHORT).show();
 				}
 			}
 		});
@@ -236,6 +228,11 @@ public class MainActivity extends Activity implements LocationListener {
 						if (fileName == null || fileName.length() < 1) {
 							Toast.makeText(MainActivity.this, "No file selected.", Toast.LENGTH_SHORT).show();
 						}
+						buttonReplayStop.setEnabled(true);
+						buttonReplay.setEnabled(false);
+						buttonStop.setEnabled(false);
+						buttonStart.setEnabled(false);
+						startReplay();
 					}
 				}).setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
 					public void onClick(DialogInterface dialog, int whichButton) {
