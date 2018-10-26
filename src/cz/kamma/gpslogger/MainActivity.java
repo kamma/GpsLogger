@@ -1,24 +1,5 @@
 package cz.kamma.gpslogger;
 
-import android.Manifest;
-import android.app.Activity;
-import android.app.AlertDialog;
-import android.content.Context;
-import android.content.DialogInterface;
-import android.content.pm.PackageManager;
-import android.location.Location;
-import android.location.LocationListener;
-import android.location.LocationManager;
-import android.os.AsyncTask;
-import android.os.Bundle;
-import android.os.Environment;
-import android.util.Log;
-import android.view.View;
-import android.view.WindowManager;
-import android.widget.Button;
-import android.widget.TextView;
-import android.widget.Toast;
-
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -30,6 +11,24 @@ import java.text.NumberFormat;
 import java.util.Date;
 import java.util.Locale;
 
+import android.Manifest;
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.Context;
+import android.content.DialogInterface;
+import android.content.pm.PackageManager;
+import android.location.Location;
+import android.location.LocationListener;
+import android.location.LocationManager;
+import android.os.Bundle;
+import android.os.Environment;
+import android.util.Log;
+import android.view.View;
+import android.view.WindowManager;
+import android.widget.Button;
+import android.widget.TextView;
+import android.widget.Toast;
+
 public class MainActivity extends Activity implements LocationListener {
 
 	private static final String[] INITIAL_PERMS = { Manifest.permission.ACCESS_FINE_LOCATION,
@@ -40,6 +39,7 @@ public class MainActivity extends Activity implements LocationListener {
 
 	long start = -1;
 	boolean running = false;
+	boolean finished = false;
 
 	String fileName;
 
@@ -62,6 +62,8 @@ public class MainActivity extends Activity implements LocationListener {
 		buttonReplayStop = findViewById(R.id.stopReplay);
 		buttonReplayStop.setEnabled(false);
 		textView = findViewById(R.id.textView);
+		
+		textView.setText("v0.4\n");
 
 		buttonStart.setOnClickListener(new View.OnClickListener() {
 			@Override
@@ -71,7 +73,6 @@ public class MainActivity extends Activity implements LocationListener {
 				buttonStart.setEnabled(false);
 				buttonReplay.setEnabled(false);
 				buttonReplayStop.setEnabled(false);
-				textView.setText("");
 				startLogging();
 			}
 		});
@@ -84,6 +85,7 @@ public class MainActivity extends Activity implements LocationListener {
 				buttonStart.setEnabled(true);
 				buttonReplay.setEnabled(true);
 				buttonReplayStop.setEnabled(false);
+				textView.setText("");
 				stopLogging();
 			}
 		});
@@ -117,7 +119,7 @@ public class MainActivity extends Activity implements LocationListener {
 		running = true;
 		textView.setText("");
 
-		AsyncTask.execute(new Runnable() {
+		new Thread(new Runnable() {
 			@Override
 			public void run() {
 				locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
@@ -134,6 +136,7 @@ public class MainActivity extends Activity implements LocationListener {
 					BufferedReader br = new BufferedReader(new FileReader(file));
 					String line = br.readLine();
 					while (line != null && running == true) {
+						textView.append("W");
 						String[] data = line.split(" ");
 						if (data.length == 4) {
 							long delay = Long.parseLong(data[0]);
@@ -149,16 +152,14 @@ public class MainActivity extends Activity implements LocationListener {
 						line = br.readLine();
 					}
 					br.close();
-					buttonReplayStop.setEnabled(false);
-					buttonReplay.setEnabled(true);
-					buttonStop.setEnabled(false);
-					buttonStart.setEnabled(true);
+					textView.setText("no more data. press stop replay.");
 				} catch (Exception e) {
 					e.printStackTrace();
 					Toast.makeText(MainActivity.this, "Cannot parse GPS data file.", Toast.LENGTH_SHORT).show();
 				}
+				finished = true;
 			}
-		});
+		}).start();
 
 	}
 
@@ -201,7 +202,6 @@ public class MainActivity extends Activity implements LocationListener {
 		}
 		try {
 			Log.i(TAG, "Setting modified location: " + latitude + ", " + longitude + ", " + altitude);
-			textView.append(latitude + ", " + longitude + ", " + altitude);
 			locationManager.setTestProviderLocation(LocationManager.GPS_PROVIDER, newLocation);
 		} catch (SecurityException e) {
 			e.printStackTrace();
@@ -243,6 +243,13 @@ public class MainActivity extends Activity implements LocationListener {
 
 	private void stopReplay() {
 		running = false;
+		while (!finished) {
+			try {
+				Thread.sleep(100);
+			} catch (Exception e) {
+			}
+		}
+		finished = false;
 		locationManager.removeTestProvider(LocationManager.GPS_PROVIDER);
 	}
 
@@ -286,7 +293,7 @@ public class MainActivity extends Activity implements LocationListener {
 	private void logData(long time, double latitude, double longitude, double altitude) {
 		String data = time + " " + latitude + " " + longitude + " " + altitude + "\n";
 		Log.i(TAG, "time: " + time + " latitude: " + latitude + " longitude: " + longitude + " altitude: " + altitude);
-		textView.append(data);
+		textView.append("R");
 		try {
 			f.write(data.getBytes());
 		} catch (Exception e) {
