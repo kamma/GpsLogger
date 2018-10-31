@@ -12,6 +12,7 @@ import java.text.SimpleDateFormat;
 import java.util.Collections;
 import java.util.Date;
 import java.util.Locale;
+import java.util.Random;
 
 import android.Manifest;
 import android.app.Activity;
@@ -37,7 +38,7 @@ import android.widget.Toast;
 
 public class MainActivity extends Activity implements LocationListener {
 
-	static String VERSION = "v0.7";
+	static String VERSION = "v0.8";
 
 	private static final String[] INITIAL_PERMS = { Manifest.permission.ACCESS_FINE_LOCATION,
 			Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.WRITE_EXTERNAL_STORAGE,
@@ -54,6 +55,8 @@ public class MainActivity extends Activity implements LocationListener {
 	char schar = '|';
 
 	static final String TAG = MainActivity.class.getCanonicalName();
+
+	static Random gen = new Random();
 
 	Button buttonStart, buttonStop, buttonReplay, buttonReplayStop, clearLog;
 	LocationManager locationManager;
@@ -204,15 +207,13 @@ public class MainActivity extends Activity implements LocationListener {
 	}
 
 	private static double randomizeValue(double start, double diff) {
-		NumberFormat nf = NumberFormat.getInstance(Locale.US);
-		DecimalFormat df = (DecimalFormat) nf;
-		df.applyPattern("#.########");
-		double rnd = Math.random();
-		return Double.parseDouble(df.format(start + (rnd * diff)));
+		int rnd = gen.nextInt(100);
+		double tmp = (rnd * diff * 0.1);
+		return start + tmp;
 	}
 
 	private static double randomizeAltitude(double start, double diff) {
-		int rnd = (int) (Math.random() * 100);
+		int rnd = gen.nextInt(100);
 		return start + (rnd * diff * 0.1);
 	}
 
