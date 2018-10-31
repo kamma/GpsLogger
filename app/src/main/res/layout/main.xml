@@ -30,18 +30,18 @@
             android:text="Start Replay" />
 
         <Button
+            android:id="@+id/pauseReplay"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Pause Replay" />
+
+        <Button
             android:id="@+id/stopReplay"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="Stop Replay" />
-
-        <Button
-            android:id="@+id/clearLog"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Clear Log" />
 
         <TextView
             android:id="@+id/textView"

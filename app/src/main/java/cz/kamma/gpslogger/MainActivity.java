@@ -9,6 +9,7 @@ import java.lang.reflect.Method;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.Locale;
@@ -38,7 +39,7 @@ import android.widget.Toast;
 
 public class MainActivity extends Activity implements LocationListener {
 
-	static String VERSION = "v0.8";
+	static String VERSION = "v0.10";
 
 	private static final String[] INITIAL_PERMS = { Manifest.permission.ACCESS_FINE_LOCATION,
 			Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.WRITE_EXTERNAL_STORAGE,
@@ -48,7 +49,7 @@ public class MainActivity extends Activity implements LocationListener {
 	SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd-HHmmss");
 
 	long start = -1;
-	boolean running = false;
+	boolean running, paused = false;
 
 	String fileName;
 
@@ -58,10 +59,10 @@ public class MainActivity extends Activity implements LocationListener {
 
 	static Random gen = new Random();
 
-	Button buttonStart, buttonStop, buttonReplay, buttonReplayStop, clearLog;
+	Button buttonStart, buttonStop, buttonReplay, buttonReplayStop, buttonReplayPause;
 	LocationManager locationManager;
 	FileOutputStream f;
-	TextView textView, logView;
+	TextView textView;
 
 	MainActivity activity;
 
@@ -79,8 +80,8 @@ public class MainActivity extends Activity implements LocationListener {
 		buttonReplayStop = findViewById(R.id.stopReplay);
 		buttonReplayStop.setEnabled(false);
 		textView = findViewById(R.id.textView);
-		logView = findViewById(R.id.logView);
-		clearLog = findViewById(R.id.clearLog);
+		buttonReplayPause = findViewById(R.id.pauseReplay);
+        buttonReplayPause.setEnabled(false);
 		
 		textView.setText(VERSION);
 
@@ -125,11 +126,11 @@ public class MainActivity extends Activity implements LocationListener {
 			}
 		});
 
-		clearLog.setOnClickListener(new View.OnClickListener() {
+		buttonReplayPause.setOnClickListener(new View.OnClickListener() {
 			@Override
 			public void onClick(View v) {
-				logView.setText("");
-				log("Log cleared");
+				log("Paused");
+				paused = !paused;
 			}
 		});
 
@@ -141,6 +142,7 @@ public class MainActivity extends Activity implements LocationListener {
 
 	private void startReplay() {
 		running = true;
+		paused = false;
 
 		new AsyncTask(){
 			@Override
@@ -158,23 +160,43 @@ public class MainActivity extends Activity implements LocationListener {
 					File file = new File(root, fileName);
 					BufferedReader br = new BufferedReader(new FileReader(file));
 					String line = br.readLine();
-					while (line != null && running == true) {
-						textView.setText("PLAYING "+schar);
-						rotateChar();
+					double lastLatitude = -1;
+					double lastLongitude = -1;
+					double lastAltitude = -1;
 
-						String[] data = line.split(" ");
-						if (data.length == 4) {
-							long delay = Long.parseLong(data[0]);
-							double latitude = Double.parseDouble(data[1]);
-							double longitude = Double.parseDouble(data[2]);
-							double altitude = Double.parseDouble(data[3]);
-							log("Original location: " + latitude + ", " + longitude + ", " + altitude);
+					while (line != null && running == true) {
+						if (paused) {
+							textView.setText("PAUSED " + schar);
+							rotateChar();
+
+							log("Original location: " + lastLatitude + ", " + lastLongitude + ", " + lastAltitude);
 							long sleepTime = (long) (Math.random() * 50);
 							Thread.sleep((Math.random() > 0.5 ? sleepTime + 1000 : 1000 - sleepTime));
-							setMockLocation(randomizeValue(latitude, 0.000001), randomizeValue(longitude, 0.000001),
-									randomizeAltitude(altitude, 0.1));
+							setMockLocation(randomizeValue(lastLatitude, 0.0000003), randomizeValue(lastLongitude, 0.0000003),
+									randomizeAltitude(lastAltitude, 0.001));
+						} else {
+							textView.setText("PLAYING " + schar);
+							rotateChar();
+
+							String[] data = line.split(" ");
+							if (data.length == 4) {
+								double latitude = Double.parseDouble(data[1]);
+								double longitude = Double.parseDouble(data[2]);
+								double altitude = Double.parseDouble(data[3]);
+
+								lastLatitude = latitude;
+								lastLongitude = longitude;
+								lastAltitude = altitude;
+
+								log("Original location: " + latitude + ", " + longitude + ", " + altitude);
+								long sleepTime = (long) (Math.random() * 50);
+								Thread.sleep((Math.random() > 0.5 ? sleepTime + 1000 : 1000 - sleepTime));
+								setMockLocation(randomizeValue(latitude, 0.000001), randomizeValue(longitude, 0.000001),
+										randomizeAltitude(altitude, 0.1));
+
+							}
+							line = br.readLine();
 						}
-						line = br.readLine();
 					}
 					br.close();
 				} catch (Exception e) {
@@ -190,6 +212,7 @@ public class MainActivity extends Activity implements LocationListener {
 			protected void onPostExecute(Object o) {
 				buttonReplayStop.setEnabled(false);
 				buttonReplay.setEnabled(true);
+				buttonReplayPause.setEnabled(false);
 				buttonStop.setEnabled(false);
 				buttonStart.setEnabled(true);
 				textView.setText("STOPPED");
@@ -258,6 +281,7 @@ public class MainActivity extends Activity implements LocationListener {
 		File file = new File(extStorage, THEME_PATH_PREFIX);
 
 		final String[] fileNames = file.list();
+		Arrays.sort(fileNames);
 		if (fileNames == null || fileNames.length < 1) {
 			Toast.makeText(MainActivity.this, "No file found on " + THEME_PATH_PREFIX, Toast.LENGTH_SHORT).show();
 			return;
@@ -276,6 +300,7 @@ public class MainActivity extends Activity implements LocationListener {
 						buttonReplay.setEnabled(false);
 						buttonStop.setEnabled(false);
 						buttonStart.setEnabled(false);
+						buttonReplayPause.setEnabled(true);
 						startReplay();
 					}
 				}).setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
@@ -287,6 +312,7 @@ public class MainActivity extends Activity implements LocationListener {
 
 	private void stopReplay() {
 		running = false;
+		paused = false;
 	}
 
 	private void stopLogging() {
