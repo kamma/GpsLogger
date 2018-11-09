@@ -171,9 +171,18 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 
             @Override
             public void onStopTrackingTouch(SeekBar seekBar) {
-                pos = seekBar.getProgress();
-                log("Position: "+pos);
-                seeked = true;
+				final int tmp = seekBar.getProgress();
+				new AlertDialog.Builder(MainActivity.this)
+						.setTitle("Set position")
+						.setMessage("Do you really want to set this position?")
+						.setIcon(android.R.drawable.ic_dialog_alert)
+						.setPositiveButton(android.R.string.yes, new DialogInterface.OnClickListener() {
+							public void onClick(DialogInterface dialog, int whichButton) {
+								pos = tmp;
+								log("Position: "+pos);
+								seeked = true;
+							}})
+						.setNegativeButton(android.R.string.no, null).show();
             }
         });
 
@@ -308,8 +317,12 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
             protected void onProgressUpdate(Object[] values) {
 			    if (values!=null && values.length>0 && values[0] instanceof Location) {
                     Location loc = (Location)values[0] ;
+                    mMap.clear();
                     LatLng mapPos = new LatLng(loc.getLatitude(), loc.getLongitude());
-                    mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(mapPos,18f));
+					MarkerOptions markerOptions = new MarkerOptions();
+                    markerOptions.position(mapPos);
+                    mMap.addMarker(markerOptions);
+                    mMap.animateCamera(CameraUpdateFactory.newLatLng(mapPos));
                 }
                 super.onProgressUpdate(values);
             }
@@ -536,6 +549,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
     @Override
     public void onMapReady(GoogleMap googleMap) {
         mMap = googleMap;
-        mMap.setMyLocationEnabled(true);
+		mMap.setMaxZoomPreference(18f);
+		mMap.setMinZoomPreference(18f);
     }
 }
