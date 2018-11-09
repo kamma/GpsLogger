@@ -32,6 +32,7 @@ import android.location.LocationManager;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Environment;
+import android.support.v7.app.AppCompatActivity;
 import android.text.InputType;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -45,11 +46,14 @@ import android.widget.Toast;
 
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
+import com.google.android.gms.maps.MapFragment;
 import com.google.android.gms.maps.MapView;
 import com.google.android.gms.maps.OnMapReadyCallback;
+import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.MarkerOptions;
 
-public class MainActivity extends Activity implements LocationListener, OnMapReadyCallback {
+public class MainActivity extends AppCompatActivity implements LocationListener, OnMapReadyCallback {
 
     static final String TAG = MainActivity.class.getCanonicalName();
 
@@ -74,9 +78,7 @@ public class MainActivity extends Activity implements LocationListener, OnMapRea
 	FileOutputStream f;
 	TextView textView, timeView;
 	SeekBar seekBar;
-	MapView mapView;
-    private GoogleMap gmap;
-    private static final String MAP_VIEW_BUNDLE_KEY = "MapViewBundleKey";
+    private static GoogleMap mMap;
 
 	MainActivity activity;
 
@@ -101,14 +103,8 @@ public class MainActivity extends Activity implements LocationListener, OnMapRea
         seekBar.setEnabled(false);
         seekBar.setProgress(0);
 
-        Bundle mapViewBundle = null;
-        if (savedInstanceState != null) {
-            mapViewBundle = savedInstanceState.getBundle(MAP_VIEW_BUNDLE_KEY);
-        }
-
-        mapView = findViewById(R.id.mapView);
-        mapView.onCreate(mapViewBundle);
-        mapView.getMapAsync(this);
+        SupportMapFragment mapFragment = (SupportMapFragment)getSupportFragmentManager().findFragmentById(R.id.map);
+        mapFragment.getMapAsync(this);
 
 		textView.setText(VERSION);
         timeView.setText("0:00");
@@ -190,6 +186,7 @@ public class MainActivity extends Activity implements LocationListener, OnMapRea
 	private void startReplay() {
 		running = true;
 		paused = false;
+        pos = 0;
 
 		new AsyncTask(){
 			@Override
@@ -225,14 +222,19 @@ public class MainActivity extends Activity implements LocationListener, OnMapRea
                     pos = 0;
                     while (pos < fullFile.size() && running == true) {
                         rotateChar();
+                        Location newLocation = new Location(LocationManager.GPS_PROVIDER);
 						if (paused) {
 							textView.setText("PAUSED " + schar);
 
 							log("Original location: " + lastLatitude + ", " + lastLongitude + ", " + lastAltitude);
 							long sleepTime = (long) (Math.random() * 15);
 							Thread.sleep((Math.random() > 0.5 ? sleepTime + 1000 : 1000 - sleepTime));
-							setMockLocation(randomizeValue(lastLatitude, 0.0000003), randomizeValue(lastLongitude, 0.0000003),
-									randomizeAltitude(lastAltitude, 0.001));
+
+                            newLocation.setLatitude(randomizeValue(lastLatitude, 0.0000006));
+                            newLocation.setLongitude(randomizeValue(lastLongitude, 0.0000006));
+                            newLocation.setAltitude(randomizeAltitude(lastAltitude, 0.001));
+
+                            setMockLocation(newLocation);
 						} else {
                             String line = fullFile.get(pos);
                             seekBar.setProgress(pos++);
@@ -264,11 +266,15 @@ public class MainActivity extends Activity implements LocationListener, OnMapRea
 								log("Original location: " + latitude + ", " + longitude + ", " + altitude);
 								long sleepTime = (long) (Math.random() * 15);
 								Thread.sleep((Math.random() > 0.5 ? sleepTime + waitTime : waitTime - sleepTime));
-								setMockLocation(randomizeValue(latitude, 0.000001), randomizeValue(longitude, 0.000001),
-										randomizeAltitude(altitude, 0.1));
 
+                                newLocation.setLatitude(randomizeValue(latitude, 0.000001));
+                                newLocation.setLongitude(randomizeValue(longitude, 0.000001));
+                                newLocation.setAltitude(randomizeAltitude(altitude, 0.1));
+
+                                setMockLocation(newLocation);
 							}
 						}
+						publishProgress(newLocation);
 					}
 				} catch (Exception e) {
 					log(e.getMessage());
@@ -297,6 +303,16 @@ public class MainActivity extends Activity implements LocationListener, OnMapRea
 				textView.setText("PLAYING");
 				super.onPreExecute();
 			}
+
+            @Override
+            protected void onProgressUpdate(Object[] values) {
+			    if (values!=null && values.length>0 && values[0] instanceof Location) {
+                    Location loc = (Location)values[0] ;
+                    LatLng mapPos = new LatLng(loc.getLatitude(), loc.getLongitude());
+                    mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(mapPos,18f));
+                }
+                super.onProgressUpdate(values);
+            }
 		}.execute();
 
 	}
@@ -312,12 +328,7 @@ public class MainActivity extends Activity implements LocationListener, OnMapRea
 		return start + (rnd * diff * 0.1);
 	}
 
-	private void setMockLocation(double latitude, double longitude, double altitude) {
-		Location newLocation = new Location(LocationManager.GPS_PROVIDER);
-
-		newLocation.setLatitude(latitude);
-		newLocation.setLongitude(longitude);
-		newLocation.setAltitude(altitude);
+	private void setMockLocation(Location newLocation) {
 		long time = System.currentTimeMillis();
 		newLocation.setTime(time);
 		newLocation.setAccuracy(1);
@@ -337,10 +348,8 @@ public class MainActivity extends Activity implements LocationListener, OnMapRea
 			}
 		}
 		try {
-			log("Setting modified location: " + latitude + ", " + longitude + ", " + altitude);
+			log("Setting modified location: " + newLocation.getLatitude() + ", " + newLocation.getLongitude() + ", " + newLocation.getAltitude());
 			locationManager.setTestProviderLocation(LocationManager.GPS_PROVIDER, newLocation);
-            //LatLng mapPos = new LatLng(latitude, longitude);
-            //gmap.moveCamera(CameraUpdateFactory.newLatLng(mapPos));
 		} catch (Exception e) {
 			Log.e(TAG, "Error: "+e.getMessage());
 		}
@@ -526,7 +535,7 @@ public class MainActivity extends Activity implements LocationListener, OnMapRea
 
     @Override
     public void onMapReady(GoogleMap googleMap) {
-        gmap = googleMap;
-        gmap.setMinZoomPreference(12);
+        mMap = googleMap;
+        mMap.setMyLocationEnabled(true);
     }
 }
