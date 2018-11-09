@@ -4,16 +4,21 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.FileReader;
+import java.io.StringReader;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.nio.file.Files;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
+import java.util.Iterator;
 import java.util.Locale;
 import java.util.Random;
+import java.util.concurrent.TimeUnit;
 
 import android.Manifest;
 import android.app.Activity;
@@ -34,12 +39,21 @@ import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
-public class MainActivity extends Activity implements LocationListener {
+import com.google.android.gms.maps.CameraUpdateFactory;
+import com.google.android.gms.maps.GoogleMap;
+import com.google.android.gms.maps.MapView;
+import com.google.android.gms.maps.OnMapReadyCallback;
+import com.google.android.gms.maps.model.LatLng;
 
-	static String VERSION = "v0.10";
+public class MainActivity extends Activity implements LocationListener, OnMapReadyCallback {
+
+    static final String TAG = MainActivity.class.getCanonicalName();
+
+	static String VERSION = "v0.11";
 
 	private static final String[] INITIAL_PERMS = { Manifest.permission.ACCESS_FINE_LOCATION,
 			Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.WRITE_EXTERNAL_STORAGE,
@@ -47,22 +61,22 @@ public class MainActivity extends Activity implements LocationListener {
 
 	private static final int LOCATION_REQUEST = 1340;
 	SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd-HHmmss");
-
 	long start = -1;
 	boolean running, paused = false;
-
 	String fileName;
-
 	char schar = '|';
-
-	static final String TAG = MainActivity.class.getCanonicalName();
-
 	static Random gen = new Random();
+	static int pos = 0;
+	static boolean seeked = false;
 
 	Button buttonStart, buttonStop, buttonReplay, buttonReplayStop, buttonReplayPause;
 	LocationManager locationManager;
 	FileOutputStream f;
-	TextView textView;
+	TextView textView, timeView;
+	SeekBar seekBar;
+	MapView mapView;
+    private GoogleMap gmap;
+    private static final String MAP_VIEW_BUNDLE_KEY = "MapViewBundleKey";
 
 	MainActivity activity;
 
@@ -80,10 +94,24 @@ public class MainActivity extends Activity implements LocationListener {
 		buttonReplayStop = findViewById(R.id.stopReplay);
 		buttonReplayStop.setEnabled(false);
 		textView = findViewById(R.id.textView);
+        timeView = findViewById(R.id.timeView);
 		buttonReplayPause = findViewById(R.id.pauseReplay);
         buttonReplayPause.setEnabled(false);
-		
+        seekBar = findViewById(R.id.seekBar);
+        seekBar.setEnabled(false);
+        seekBar.setProgress(0);
+
+        Bundle mapViewBundle = null;
+        if (savedInstanceState != null) {
+            mapViewBundle = savedInstanceState.getBundle(MAP_VIEW_BUNDLE_KEY);
+        }
+
+        mapView = findViewById(R.id.mapView);
+        mapView.onCreate(mapViewBundle);
+        mapView.getMapAsync(this);
+
 		textView.setText(VERSION);
+        timeView.setText("0:00");
 
 		buttonStart.setOnClickListener(new View.OnClickListener() {
 			@Override
@@ -134,6 +162,25 @@ public class MainActivity extends Activity implements LocationListener {
 			}
 		});
 
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+                pos = seekBar.getProgress();
+                log("Position: "+pos);
+                seeked = true;
+            }
+        });
+
 
 		if (!canAccessLocation()) {
 			requestPermissions(INITIAL_PERMS, LOCATION_REQUEST);
@@ -158,52 +205,76 @@ public class MainActivity extends Activity implements LocationListener {
 					File extStorage = Environment.getExternalStorageDirectory();
 					File root = new File(extStorage, THEME_PATH_PREFIX);
 					File file = new File(root, fileName);
-					BufferedReader br = new BufferedReader(new FileReader(file));
-					String line = br.readLine();
+                    ArrayList<String> fullFile = new ArrayList<>();
+                    StringReader sr = new StringReader(new String(Files.readAllBytes(file.toPath())));
+                    BufferedReader br = new BufferedReader(sr);
+					String lineTmp = br.readLine();
+					while (lineTmp!=null) {
+					    fullFile.add(lineTmp);
+                        lineTmp = br.readLine();
+                    }
+                    br.close();
 					double lastLatitude = -1;
 					double lastLongitude = -1;
 					double lastAltitude = -1;
+                    long lastTime = 0;
 
-					while (line != null && running == true) {
+                    seekBar.setMin(0);
+                    seekBar.setMax(fullFile.size());
+
+                    pos = 0;
+                    while (pos < fullFile.size() && running == true) {
+                        rotateChar();
 						if (paused) {
 							textView.setText("PAUSED " + schar);
-							rotateChar();
 
 							log("Original location: " + lastLatitude + ", " + lastLongitude + ", " + lastAltitude);
-							long sleepTime = (long) (Math.random() * 50);
+							long sleepTime = (long) (Math.random() * 15);
 							Thread.sleep((Math.random() > 0.5 ? sleepTime + 1000 : 1000 - sleepTime));
 							setMockLocation(randomizeValue(lastLatitude, 0.0000003), randomizeValue(lastLongitude, 0.0000003),
 									randomizeAltitude(lastAltitude, 0.001));
 						} else {
-							textView.setText("PLAYING " + schar);
-							rotateChar();
+                            String line = fullFile.get(pos);
+                            seekBar.setProgress(pos++);
+
+                            textView.setText("PLAYING " + schar);
 
 							String[] data = line.split(" ");
 							if (data.length == 4) {
+                                long time = Long.parseLong(data[0]);
 								double latitude = Double.parseDouble(data[1]);
 								double longitude = Double.parseDouble(data[2]);
 								double altitude = Double.parseDouble(data[3]);
 
+								long waitTime = time - lastTime;
+								if (seeked) {
+								    seeked = false;
+								    waitTime = 1005;
+                                }
 								lastLatitude = latitude;
 								lastLongitude = longitude;
 								lastAltitude = altitude;
+								lastTime = time;
+
+								timeView.setText(""+String.format("%dm:%ds",
+                                        TimeUnit.MILLISECONDS.toMinutes(time),
+                                        TimeUnit.MILLISECONDS.toSeconds(time) -
+                                                TimeUnit.MINUTES.toSeconds(TimeUnit.MILLISECONDS.toMinutes(time))));
 
 								log("Original location: " + latitude + ", " + longitude + ", " + altitude);
-								long sleepTime = (long) (Math.random() * 50);
-								Thread.sleep((Math.random() > 0.5 ? sleepTime + 1000 : 1000 - sleepTime));
+								long sleepTime = (long) (Math.random() * 15);
+								Thread.sleep((Math.random() > 0.5 ? sleepTime + waitTime : waitTime - sleepTime));
 								setMockLocation(randomizeValue(latitude, 0.000001), randomizeValue(longitude, 0.000001),
 										randomizeAltitude(altitude, 0.1));
 
 							}
-							line = br.readLine();
 						}
 					}
-					br.close();
 				} catch (Exception e) {
-					e.printStackTrace();
-					Toast.makeText(MainActivity.this, "Cannot parse GPS data file.", Toast.LENGTH_SHORT).show();
+					log(e.getMessage());
+					//Toast.makeText(MainActivity.this, "Cannot parse GPS data file.", Toast.LENGTH_SHORT).show();
 				}
-
+                log("Final position: "+pos);
                 running = false;
 				return null;
 			}
@@ -217,6 +288,7 @@ public class MainActivity extends Activity implements LocationListener {
 				buttonStart.setEnabled(true);
 				textView.setText("STOPPED");
                 locationManager.removeTestProvider(LocationManager.GPS_PROVIDER);
+                seekBar.setEnabled(false);
 				super.onPostExecute(o);
 			}
 
@@ -267,8 +339,10 @@ public class MainActivity extends Activity implements LocationListener {
 		try {
 			log("Setting modified location: " + latitude + ", " + longitude + ", " + altitude);
 			locationManager.setTestProviderLocation(LocationManager.GPS_PROVIDER, newLocation);
-		} catch (SecurityException e) {
-			e.printStackTrace();
+            //LatLng mapPos = new LatLng(latitude, longitude);
+            //gmap.moveCamera(CameraUpdateFactory.newLatLng(mapPos));
+		} catch (Exception e) {
+			Log.e(TAG, "Error: "+e.getMessage());
 		}
 	}
 
@@ -301,6 +375,7 @@ public class MainActivity extends Activity implements LocationListener {
 						buttonStop.setEnabled(false);
 						buttonStart.setEnabled(false);
 						buttonReplayPause.setEnabled(true);
+                        seekBar.setEnabled(true);
 						startReplay();
 					}
 				}).setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
@@ -447,7 +522,11 @@ public class MainActivity extends Activity implements LocationListener {
 
 	private void log(String line) {
 		Log.i(TAG, line);
-		//logView.append(line+"\n");
 	}
 
+    @Override
+    public void onMapReady(GoogleMap googleMap) {
+        gmap = googleMap;
+        gmap.setMinZoomPreference(12);
+    }
 }
