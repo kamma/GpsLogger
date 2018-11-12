@@ -57,7 +57,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 
     static final String TAG = MainActivity.class.getCanonicalName();
 
-	static String VERSION = "v0.11";
+	static String VERSION = "v0.12";
 
 	private static final String[] INITIAL_PERMS = { Manifest.permission.ACCESS_FINE_LOCATION,
 			Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.WRITE_EXTERNAL_STORAGE,
@@ -333,12 +333,17 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 	private static double randomizeValue(double start, double diff) {
 		int rnd = gen.nextInt(100);
 		double tmp = (rnd * diff * 0.1);
-		return start + tmp;
+		return roundAvoid(start + tmp,8);
 	}
 
 	private static double randomizeAltitude(double start, double diff) {
 		int rnd = gen.nextInt(100);
 		return start + (rnd * diff * 0.1);
+	}
+
+	public static double roundAvoid(double value, int places) {
+		double scale = Math.pow(10, places);
+		return Math.round(value * scale) / scale;
 	}
 
 	private void setMockLocation(Location newLocation) {
