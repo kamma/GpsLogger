@@ -25,6 +25,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationListener;
@@ -57,7 +58,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 
     static final String TAG = MainActivity.class.getCanonicalName();
 
-	static String VERSION = "v0.12";
+	static String VERSION = "v0.15";
 
 	private static final String[] INITIAL_PERMS = { Manifest.permission.ACCESS_FINE_LOCATION,
 			Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.WRITE_EXTERNAL_STORAGE,
@@ -85,6 +86,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
+		setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
 		setContentView(R.layout.main);
 
 		activity = this;
@@ -224,6 +226,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 					double lastLongitude = -1;
 					double lastAltitude = -1;
                     long lastTime = 0;
+                    long startTime = 0;
 
                     seekBar.setMin(0);
                     seekBar.setMax(fullFile.size());
@@ -246,7 +249,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
                             setMockLocation(newLocation);
 						} else {
                             String line = fullFile.get(pos);
-                            seekBar.setProgress(pos++);
+                            seekBar.setProgress(pos);
 
                             textView.setText("PLAYING " + schar);
 
@@ -257,15 +260,21 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 								double longitude = Double.parseDouble(data[2]);
 								double altitude = Double.parseDouble(data[3]);
 
+								if (pos==0)
+									startTime = time - 1000;
+
 								long waitTime = time - lastTime;
 								if (seeked) {
 								    seeked = false;
-								    waitTime = 1005;
+								    waitTime = 1000;
                                 }
 								lastLatitude = latitude;
 								lastLongitude = longitude;
 								lastAltitude = altitude;
 								lastTime = time;
+
+								if (waitTime<990)
+									waitTime = 1000;
 
 								timeView.setText(""+String.format("%dm:%ds",
                                         TimeUnit.MILLISECONDS.toMinutes(time),
@@ -274,7 +283,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 
 								log("Original location: " + latitude + ", " + longitude + ", " + altitude);
 								long sleepTime = (long) (Math.random() * 15);
-								Thread.sleep((Math.random() > 0.5 ? sleepTime + waitTime : waitTime - sleepTime));
+								Thread.sleep((Math.random() > 0.3 ? sleepTime + waitTime : waitTime - sleepTime));
 
                                 newLocation.setLatitude(randomizeValue(latitude, 0.000001));
                                 newLocation.setLongitude(randomizeValue(longitude, 0.000001));
@@ -282,6 +291,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 
                                 setMockLocation(newLocation);
 							}
+							pos++;
 						}
 						publishProgress(newLocation);
 					}
@@ -333,17 +343,20 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 	private static double randomizeValue(double start, double diff) {
 		int rnd = gen.nextInt(100);
 		double tmp = (rnd * diff * 0.1);
-		return roundAvoid(start + tmp,8);
+		return round(start + tmp);
+	}
+
+	private static double round(double d) {
+		String tmp = "" + d;
+		String[] parts = tmp.split("\\.");
+		if (parts[1].length()>8)
+			return Double.parseDouble(parts[0]+"."+parts[1].substring(0, 7));
+		return d;
 	}
 
 	private static double randomizeAltitude(double start, double diff) {
 		int rnd = gen.nextInt(100);
 		return start + (rnd * diff * 0.1);
-	}
-
-	public static double roundAvoid(double value, int places) {
-		double scale = Math.pow(10, places);
-		return Math.round(value * scale) / scale;
 	}
 
 	private void setMockLocation(Location newLocation) {
