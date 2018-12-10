@@ -32,6 +32,7 @@ import android.location.Criteria;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
+import android.location.LocationProvider;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
@@ -63,7 +64,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 
     static final String TAG = MainActivity.class.getCanonicalName();
 
-	static String VERSION = "v0.26";
+	static String VERSION = "v0.28";
 
 	private static final String[] INITIAL_PERMS = { Manifest.permission.ACCESS_FINE_LOCATION,
 			Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.WRITE_EXTERNAL_STORAGE,
@@ -80,7 +81,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 	static String state = VERSION;
 	static long start = -1;
 
-	Button buttonStart, buttonStop, buttonReplay, buttonReplayStop, buttonReplayPause;
+	Button buttonStart, buttonStop, buttonReplay, buttonReplayStop, buttonReplayPause, buttonResetGps;
 	LocationManager locationManager;
 	FileOutputStream f, logFile;
 	TextView textView, timeView, fileNameView;
@@ -105,6 +106,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 		buttonStart = findViewById(R.id.buttonStart);
 		buttonStop = findViewById(R.id.buttonStop);
 		buttonStop.setEnabled(false);
+		buttonResetGps = findViewById(R.id.buttonResetGps);
 		buttonReplay = findViewById(R.id.startReplay);
 		buttonReplayStop = findViewById(R.id.stopReplay);
 		buttonReplayStop.setEnabled(false);
@@ -149,6 +151,14 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 			public void onClick(View v) {
 				log("Start replay");
 				openSelectFileDialog();
+			}
+		});
+
+		buttonResetGps.setOnClickListener(new View.OnClickListener() {
+			@Override
+			public void onClick(View v) {
+				log("Reset GPS");
+				clearGps();
 			}
 		});
 
@@ -199,6 +209,22 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 
 		if (!canAccessLocation()) {
 			requestPermissions(INITIAL_PERMS, LOCATION_REQUEST);
+		}
+	}
+
+	private void clearGps() {
+		if (locationManager!=null) {
+			locationManager.clearTestProviderStatus(LocationManager.GPS_PROVIDER);
+			locationManager.clearTestProviderEnabled(LocationManager.GPS_PROVIDER);
+			locationManager.clearTestProviderLocation(LocationManager.GPS_PROVIDER);
+			locationManager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, false);
+			locationManager.removeTestProvider(LocationManager.GPS_PROVIDER);
+			locationManager.addTestProvider(LocationManager.GPS_PROVIDER, false, true, false, false, true, true, true,
+					Criteria.POWER_LOW, Criteria.ACCURACY_HIGH);
+			locationManager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, true);
+			Toast.makeText(MainActivity.this, "GPS Provider cleared.", Toast.LENGTH_SHORT).show();
+		} else {
+			Toast.makeText(MainActivity.this, "No GPS Provider found.", Toast.LENGTH_SHORT).show();
 		}
 	}
 
@@ -385,7 +411,8 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 
 		try {
 			log("Setting modified location: " + type + ", " +newLocation.getLatitude() + ", " + newLocation.getLongitude() + ", " + newLocation.getAltitude());
-			locationManager.setTestProviderLocation(LocationManager.GPS_PROVIDER, newLocation);
+            locationManager.clearTestProviderLocation(LocationManager.GPS_PROVIDER);
+            locationManager.setTestProviderLocation(LocationManager.GPS_PROVIDER, newLocation);
 		} catch (Exception e) {
 			Log.e(TAG, "Error: "+e.getMessage());
 		}
