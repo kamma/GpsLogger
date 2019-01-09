@@ -64,7 +64,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 
     static final String TAG = MainActivity.class.getCanonicalName();
 
-	static String VERSION = "v0.28";
+	static String VERSION = "v0.30";
 
 	private static final String[] INITIAL_PERMS = { Manifest.permission.ACCESS_FINE_LOCATION,
 			Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.WRITE_EXTERNAL_STORAGE,
@@ -72,7 +72,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 
 	private static final int LOCATION_REQUEST = 1340;
 	SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd-HHmmss");
-	boolean running, paused = false;
+	boolean running, paused, reverse = false;
 	String fileName;
 	char schar = '|';
 	static Random gen = new Random();
@@ -81,7 +81,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 	static String state = VERSION;
 	static long start = -1;
 
-	Button buttonStart, buttonStop, buttonReplay, buttonReplayStop, buttonReplayPause, buttonResetGps;
+	Button buttonStart, buttonStop, buttonReplay, buttonReplayStop, buttonReplayPause, buttonResetGps, buttonReverse;
 	LocationManager locationManager;
 	FileOutputStream f, logFile;
 	TextView textView, timeView, fileNameView;
@@ -115,6 +115,8 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 		fileNameView = findViewById(R.id.fileNameView);
 		buttonReplayPause = findViewById(R.id.pauseReplay);
         buttonReplayPause.setEnabled(false);
+		buttonReverse = findViewById(R.id.buttonReverse);
+		buttonReverse.setEnabled(false);
         seekBar = findViewById(R.id.seekBar);
         seekBar.setEnabled(false);
         seekBar.setProgress(0);
@@ -141,6 +143,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 				buttonStart.setEnabled(true);
 				buttonReplay.setEnabled(true);
 				buttonReplayStop.setEnabled(false);
+				buttonReverse.setEnabled(false);
 				textView.setText("STOPPED");
 				stopLogging();
 			}
@@ -175,6 +178,20 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 			public void onClick(View v) {
 				log("Paused");
 				paused = !paused;
+			}
+		});
+
+		buttonReverse.setOnClickListener(new View.OnClickListener() {
+			@Override
+			public void onClick(View v) {
+				log("Reverse");
+				if (reverse) {
+					reverse = false;
+					buttonReverse.setText("Reverse");
+				} else {
+					reverse = true;
+					buttonReverse.setText("Normal");
+				}
 			}
 		});
 
@@ -219,6 +236,8 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 			locationManager.clearTestProviderLocation(LocationManager.GPS_PROVIDER);
 			locationManager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, false);
 			locationManager.removeTestProvider(LocationManager.GPS_PROVIDER);
+			locationManager = null;
+			locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 			locationManager.addTestProvider(LocationManager.GPS_PROVIDER, false, true, false, false, true, true, true,
 					Criteria.POWER_LOW, Criteria.ACCURACY_HIGH);
 			locationManager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, true);
@@ -262,9 +281,18 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 
                     seekBar.setMax(fullFile.size());
 
-                    pos = 0;
-                    while (pos < fullFile.size() && running == true) {
-                        rotateChar();
+                    pos = -1;
+                    while (running == true) {
+						if (reverse) {
+							pos--;
+							if (pos<0)
+								pos = 0;
+						} else {
+							pos++;
+							if (pos>=fullFile.size())
+								pos = fullFile.size()-1;
+						}
+						rotateChar();
                         Location newLocation = new Location(LocationManager.GPS_PROVIDER);
 						if (paused) {
 							state = "PAUSED " + schar;
@@ -323,7 +351,6 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 
                                 setMockLocation("N", newLocation);
 							}
-							pos++;
 						}
 						publishProgress(newLocation, lastTime);
 					}
@@ -411,9 +438,10 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 
 		try {
 			log("Setting modified location: " + type + ", " +newLocation.getLatitude() + ", " + newLocation.getLongitude() + ", " + newLocation.getAltitude());
-            locationManager.clearTestProviderLocation(LocationManager.GPS_PROVIDER);
+            //locationManager.clearTestProviderLocation(LocationManager.GPS_PROVIDER);
             locationManager.setTestProviderLocation(LocationManager.GPS_PROVIDER, newLocation);
 		} catch (Exception e) {
+			Toast.makeText(MainActivity.this, "ERROR: Cannot set location."+e.getMessage(), Toast.LENGTH_SHORT).show();
 			Log.e(TAG, "Error: "+e.getMessage());
 		}
 	}
@@ -448,6 +476,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 						buttonStart.setEnabled(false);
 						buttonReplayPause.setEnabled(true);
                         seekBar.setEnabled(true);
+						buttonReverse.setEnabled(true);
                         fileNameView.setText(fileName);
 						startReplay();
 					}
