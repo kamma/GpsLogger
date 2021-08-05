@@ -75,8 +75,10 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
     public static final String ACTION_PAUSE = "GPS_PLAYER_PAUSE";
     private static final String CHANNEL_ID = "AAA";
     private static final int notificationId = 10001;
+    private static final int GPS_ACCURACY = 1;
+    private static final String GPS_PROVIDER_NAME = LocationManager.GPS_PROVIDER;
 
-    static String VERSION = "v0.5";
+    static String VERSION = "v0.52";
 
     private static final String[] INITIAL_PERMS = {Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.WRITE_EXTERNAL_STORAGE,
@@ -266,6 +268,12 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
         }
     }
 
+    @Override
+    public void onDestroy() {
+        notificationManager.cancelAll();
+        super.onDestroy();
+    }
+
     private void createNotificationChannel() {
         // Create the NotificationChannel, but only on API 26+ because
         // the NotificationChannel class is new and not in the support library
@@ -283,16 +291,18 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
     }
 
     private void clearGps() {
-        locationManager.clearTestProviderStatus(LocationManager.GPS_PROVIDER);
-        locationManager.clearTestProviderEnabled(LocationManager.GPS_PROVIDER);
-        locationManager.clearTestProviderLocation(LocationManager.GPS_PROVIDER);
-        locationManager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, false);
-        locationManager.removeTestProvider(LocationManager.GPS_PROVIDER);
-        locationManager = null;
-        locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-        locationManager.addTestProvider(LocationManager.GPS_PROVIDER, false, true, false, false, true, true, true,
-                Criteria.POWER_LOW, Criteria.ACCURACY_HIGH);
-        locationManager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, true);
+        if (locationManager!=null && locationManager.getProvider(GPS_PROVIDER_NAME)!=null) {
+            locationManager.clearTestProviderStatus(GPS_PROVIDER_NAME);
+            locationManager.clearTestProviderEnabled(GPS_PROVIDER_NAME);
+            locationManager.clearTestProviderLocation(GPS_PROVIDER_NAME);
+            locationManager.setTestProviderEnabled(GPS_PROVIDER_NAME, false);
+            locationManager.removeTestProvider(GPS_PROVIDER_NAME);
+            locationManager = null;
+            locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+            locationManager.addTestProvider(GPS_PROVIDER_NAME, false, true, false, false, true, true, true,
+                    Criteria.POWER_LOW, GPS_ACCURACY);
+            locationManager.setTestProviderEnabled(GPS_PROVIDER_NAME, true);
+        }
         Toast.makeText(MainActivity.this, "GPS Provider cleared.", Toast.LENGTH_SHORT).show();
     }
 
@@ -302,9 +312,9 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
                 "GPSLogger::wakeLock");
         wakeLock.acquire();
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-        locationManager.addTestProvider(LocationManager.GPS_PROVIDER, false, true, false, false, true, true, true,
-                Criteria.POWER_LOW, Criteria.ACCURACY_HIGH);
-        locationManager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, true);
+        locationManager.addTestProvider(GPS_PROVIDER_NAME, false, true, false, false, true, true, true,
+                    Criteria.POWER_LOW, GPS_ACCURACY);
+        locationManager.setTestProviderEnabled(GPS_PROVIDER_NAME, true);
 
         running = true;
         paused = false;
@@ -413,13 +423,14 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
                 seekBar.setProgress(0);
                 seekBar.setEnabled(false);
                 fileNameView.setText("");
-                locationManager.clearTestProviderStatus(LocationManager.GPS_PROVIDER);
-                locationManager.clearTestProviderEnabled(LocationManager.GPS_PROVIDER);
-                locationManager.clearTestProviderLocation(LocationManager.GPS_PROVIDER);
-                locationManager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, false);
-                locationManager.removeTestProvider(LocationManager.GPS_PROVIDER);
-                locationManager = null;
-
+                if (locationManager!=null && locationManager.getProvider(GPS_PROVIDER_NAME)!=null) {
+                    locationManager.clearTestProviderStatus(GPS_PROVIDER_NAME);
+                    locationManager.clearTestProviderEnabled(GPS_PROVIDER_NAME);
+                    locationManager.clearTestProviderLocation(GPS_PROVIDER_NAME);
+                    locationManager.setTestProviderEnabled(GPS_PROVIDER_NAME, false);
+                    locationManager.removeTestProvider(GPS_PROVIDER_NAME);
+                    locationManager = null;
+                }
                 super.onPostExecute(o);
             }
 
@@ -475,7 +486,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
     }
 
     private void setMockLocation(double latitude, double longitude, double altitude, float acc) {
-        Location newLocation = new Location(LocationManager.GPS_PROVIDER);
+        Location newLocation = new Location(GPS_PROVIDER_NAME);
         newLocation.setLatitude(latitude);
         newLocation.setLongitude(longitude);
         newLocation.setAltitude(altitude);
@@ -487,7 +498,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
         }
 
         try {
-            locationManager.setTestProviderLocation(LocationManager.GPS_PROVIDER, newLocation);
+            locationManager.setTestProviderLocation(GPS_PROVIDER_NAME, newLocation);
         } catch (Exception e) {
             Log.e(TAG, "Error: " + e.getMessage());
         }
@@ -567,7 +578,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
         } catch (Exception e) {
             e.printStackTrace();
         }
-        locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, this);
+        locationManager.requestLocationUpdates(GPS_PROVIDER_NAME, 0, 0, this);
     }
 
     private void saveAsFileDialog() {
