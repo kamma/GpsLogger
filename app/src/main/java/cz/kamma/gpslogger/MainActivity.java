@@ -73,12 +73,13 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 
     static final String TAG = MainActivity.class.getCanonicalName();
     public static final String ACTION_PAUSE = "GPS_PLAYER_PAUSE";
+    public static final String ACTION_REVERSE = "GPS_PLAYER_REVERSE";
     private static final String CHANNEL_ID = "AAA";
     private static final int notificationId = 10001;
     private static final int GPS_ACCURACY = 1;
     private static final String GPS_PROVIDER_NAME = LocationManager.GPS_PROVIDER;
 
-    static String VERSION = "v0.52";
+    static String VERSION = "v0.6";
 
     private static final String[] INITIAL_PERMS = {Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.WRITE_EXTERNAL_STORAGE,
@@ -97,7 +98,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
     PowerManager.WakeLock wakeLock;
 
     LocationManager locationManager;
-    Button buttonStart, buttonStop, buttonReplay, buttonReplayStop, buttonReplayPause, buttonResetGps, buttonReverse;
+    static Button buttonStart, buttonStop, buttonReplay, buttonReplayStop, buttonReplayPause, buttonResetGps, buttonReverse;
     FileOutputStream f;
     TextView textView, timeView, fileNameView;
     SeekBar seekBar;
@@ -107,16 +108,21 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 
     static NotificationCompat.Builder builder;
     static NotificationManagerCompat notificationManager;
-    Intent snoozeIntent;
-    PendingIntent snoozePendingIntent;
+    Intent snoozeIntentPause,snoozeIntentReverse;
+    PendingIntent snoozePendingIntentPause, snoozePendingIntentReverse;
     BroadcastReceiver br = new MyBroadcastReceiver();
     IntentFilter filter = new IntentFilter();
 
     public static void refreshNotification() {
-        if (paused)
-            builder.setContentText("Now GPS Player is PAUSED");
+        String textTmp = "Now GPS Player is PAUSED";
+        if (!paused)
+            textTmp = "Now GPS Player is PLAYING";
+
+        if (reverse)
+            textTmp = textTmp + " (going Backward)";
         else
-            builder.setContentText("Now GPS Player is PLAYING");
+            textTmp = textTmp + " (going Forward)";
+        builder.setContentText(textTmp);
         notificationManager.notify(notificationId, builder.build());
     }
 
@@ -128,19 +134,25 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
         setContentView(R.layout.main);
         createNotificationChannel();
 
-        snoozeIntent = new Intent(this, MyBroadcastReceiver.class);
-        snoozeIntent.setAction(ACTION_PAUSE);
+        snoozeIntentPause = new Intent(this, MyBroadcastReceiver.class);
+        snoozeIntentPause.setAction(ACTION_PAUSE);
 
-        snoozePendingIntent = PendingIntent.getBroadcast(this, 0, snoozeIntent, 0);
+        snoozeIntentReverse = new Intent(this, MyBroadcastReceiver.class);
+        snoozeIntentReverse.setAction(ACTION_REVERSE);
+
+        snoozePendingIntentPause = PendingIntent.getBroadcast(this, 0, snoozeIntentPause, 0);
+        snoozePendingIntentReverse = PendingIntent.getBroadcast(this, 0, snoozeIntentReverse, 0);
 
         builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.btn_plus)
                 .setContentTitle("GPS Player")
-                .setContentText("Now GPS Player is PLAYING")
+                .setContentText("Now GPS Player is PLAYING (going Forward)")
                 .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                 .setAutoCancel(false)
                 .setOngoing(true)
-                .setContentIntent(snoozePendingIntent);
+                .setContentIntent(snoozePendingIntentPause)
+                .addAction(android.R.drawable.ic_media_rew, "Reverse",
+                        snoozePendingIntentReverse);
 
         notificationManager = NotificationManagerCompat.from(this);
 
@@ -218,6 +230,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
             @Override
             public void onClick(View v) {
                 paused = !paused;
+                MainActivity.refreshNotification();
             }
         });
 
@@ -226,11 +239,12 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
             public void onClick(View v) {
                 if (reverse) {
                     reverse = false;
-                    buttonReverse.setText("Reverse");
+                    buttonReverse.setText("Reverse (going Forward)");
                 } else {
                     reverse = true;
-                    buttonReverse.setText("Normal");
+                    buttonReverse.setText("Reverse (going Backward)");
                 }
+                MainActivity.refreshNotification();
             }
         });
 

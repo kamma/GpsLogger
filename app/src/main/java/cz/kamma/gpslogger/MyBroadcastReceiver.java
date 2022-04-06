@@ -10,7 +10,10 @@ public class MyBroadcastReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
         if (intent.getAction().equals(MainActivity.ACTION_PAUSE)) {
-            MainActivity.paused = !MainActivity.paused;
+            MainActivity.buttonReplayPause.callOnClick();
+            MainActivity.refreshNotification();
+        } else if (intent.getAction().equals(MainActivity.ACTION_REVERSE)) {
+            MainActivity.buttonReverse.callOnClick();
             MainActivity.refreshNotification();
         }
     }
