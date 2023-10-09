@@ -15,6 +15,12 @@ public class MyBroadcastReceiver extends BroadcastReceiver {
         } else if (intent.getAction().equals(MainActivity.ACTION_REVERSE)) {
             MainActivity.buttonReverse.callOnClick();
             MainActivity.refreshNotification();
+        } else if (intent.getAction().equals(MainActivity.ACTION_SPEED_PLUS)) {
+            MainActivity.buttonSpeedPlus.callOnClick();
+            MainActivity.refreshNotification();
+        } else if (intent.getAction().equals(MainActivity.ACTION_SPEED_MINUS)) {
+            MainActivity.buttonSpeedMinus.callOnClick();
+            MainActivity.refreshNotification();
         }
     }
 }

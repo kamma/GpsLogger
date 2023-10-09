@@ -4,27 +4,16 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.io.FileReader;
 import java.io.StringReader;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.nio.file.Files;
-import java.text.DecimalFormat;
-import java.text.NumberFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Date;
-import java.util.Iterator;
-import java.util.Locale;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
 import android.Manifest;
-import android.app.Activity;
 import android.app.AlertDialog;
-import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -35,23 +24,22 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
-import android.location.Criteria;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
-import android.location.LocationProvider;
+import android.location.provider.ProviderProperties;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.PowerManager;
 import android.os.SystemClock;
+import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.app.NotificationManagerCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.text.InputType;
 import android.util.Log;
-import android.view.LayoutInflater;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
@@ -62,8 +50,6 @@ import android.widget.Toast;
 
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
-import com.google.android.gms.maps.MapFragment;
-import com.google.android.gms.maps.MapView;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.LatLng;
@@ -74,12 +60,14 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
     static final String TAG = MainActivity.class.getCanonicalName();
     public static final String ACTION_PAUSE = "GPS_PLAYER_PAUSE";
     public static final String ACTION_REVERSE = "GPS_PLAYER_REVERSE";
+    public static final String ACTION_SPEED_PLUS = "GPS_PLAYER_SPEED_PLUS";
+    public static final String ACTION_SPEED_MINUS = "GPS_PLAYER_SPEED_MINUS";
     private static final String CHANNEL_ID = "AAA";
     private static final int notificationId = 10001;
-    private static final int GPS_ACCURACY = 1;
+    private static final int GPS_ACCURACY = ProviderProperties.ACCURACY_FINE;
     private static final String GPS_PROVIDER_NAME = LocationManager.GPS_PROVIDER;
 
-    static String VERSION = "v0.6";
+    static String VERSION = "v0.7";
 
     private static final String[] INITIAL_PERMS = {Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.WRITE_EXTERNAL_STORAGE,
@@ -95,10 +83,11 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
     static boolean seeked = false;
     static String state = VERSION;
     static long start = -1;
+    static int speed = 1;
     PowerManager.WakeLock wakeLock;
 
     LocationManager locationManager;
-    static Button buttonStart, buttonStop, buttonReplay, buttonReplayStop, buttonReplayPause, buttonResetGps, buttonReverse;
+    static Button buttonStart, buttonStop, buttonReplay, buttonReplayStop, buttonReplayPause, buttonResetGps, buttonReverse, buttonSpeedPlus, buttonSpeedMinus;
     FileOutputStream f;
     TextView textView, timeView, fileNameView;
     SeekBar seekBar;
@@ -108,20 +97,22 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 
     static NotificationCompat.Builder builder;
     static NotificationManagerCompat notificationManager;
-    Intent snoozeIntentPause,snoozeIntentReverse;
-    PendingIntent snoozePendingIntentPause, snoozePendingIntentReverse;
+    Intent snoozeIntentPause, snoozeIntentReverse, snoozeIntentSpeedPlus, snoozeIntentSpeedMinus;
+    PendingIntent snoozePendingIntentPause, snoozePendingIntentReverse, snoozePendingIntentSpeedPlus, snoozePendingIntentSpeedMinus;
     BroadcastReceiver br = new MyBroadcastReceiver();
     IntentFilter filter = new IntentFilter();
 
     public static void refreshNotification() {
         String textTmp = "Now GPS Player is PAUSED";
         if (!paused)
-            textTmp = "Now GPS Player is PLAYING";
+            textTmp = "Now GPS Player is PLAYING/";
 
         if (reverse)
-            textTmp = textTmp + " (going Backward)";
+            textTmp = textTmp + "going Backward/";
         else
-            textTmp = textTmp + " (going Forward)";
+            textTmp = textTmp + "going Forward/";
+
+        textTmp = textTmp + "Speed " + speed;
         builder.setContentText(textTmp);
         notificationManager.notify(notificationId, builder.build());
     }
@@ -140,19 +131,31 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
         snoozeIntentReverse = new Intent(this, MyBroadcastReceiver.class);
         snoozeIntentReverse.setAction(ACTION_REVERSE);
 
+        snoozeIntentSpeedPlus = new Intent(this, MyBroadcastReceiver.class);
+        snoozeIntentSpeedPlus.setAction(ACTION_SPEED_PLUS);
+
+        snoozeIntentSpeedMinus = new Intent(this, MyBroadcastReceiver.class);
+        snoozeIntentSpeedMinus.setAction(ACTION_SPEED_MINUS);
+
         snoozePendingIntentPause = PendingIntent.getBroadcast(this, 0, snoozeIntentPause, 0);
         snoozePendingIntentReverse = PendingIntent.getBroadcast(this, 0, snoozeIntentReverse, 0);
+        snoozePendingIntentSpeedPlus = PendingIntent.getBroadcast(this, 0, snoozeIntentSpeedPlus, 0);
+        snoozePendingIntentSpeedMinus = PendingIntent.getBroadcast(this, 0, snoozeIntentSpeedMinus, 0);
 
         builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.btn_plus)
                 .setContentTitle("GPS Player")
-                .setContentText("Now GPS Player is PLAYING (going Forward)")
+                .setContentText("Now GPS Player is PLAYING/going Forward/Speed 1")
                 .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                 .setAutoCancel(false)
                 .setOngoing(true)
                 .setContentIntent(snoozePendingIntentPause)
                 .addAction(android.R.drawable.ic_media_rew, "Reverse",
-                        snoozePendingIntentReverse);
+                        snoozePendingIntentReverse)
+                .addAction(android.R.drawable.ic_media_rew, "Speed+",
+                        snoozePendingIntentSpeedPlus)
+                .addAction(android.R.drawable.ic_media_rew, "Speed-",
+                        snoozePendingIntentSpeedMinus);
 
         notificationManager = NotificationManagerCompat.from(this);
 
@@ -168,6 +171,10 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
         buttonReplay = findViewById(R.id.startReplay);
         buttonReplayStop = findViewById(R.id.stopReplay);
         buttonReplayStop.setEnabled(false);
+        buttonSpeedPlus = findViewById(R.id.buttonSpeedPlus);
+        buttonSpeedPlus.setEnabled(false);
+        buttonSpeedMinus = findViewById(R.id.buttonSpeedMinus);
+        buttonSpeedMinus.setEnabled(false);
         textView = findViewById(R.id.textView);
         timeView = findViewById(R.id.timeView);
         fileNameView = findViewById(R.id.fileNameView);
@@ -225,7 +232,28 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
                 stopReplay();
             }
         });
-
+        buttonSpeedPlus.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (paused)
+                    paused = false;
+                else
+                    speed++;
+                buttonSpeedPlus.setText("SPEED+ (" + speed + ")");
+            }
+        });
+        buttonSpeedMinus.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                    speed--;
+                    if (speed < 1) {
+                        speed = 1;
+                        paused = true;
+                        MainActivity.refreshNotification();
+                    }
+                    buttonSpeedPlus.setText("SPEED+ (" + speed + ")");
+                }
+        });
         buttonReplayPause.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -305,7 +333,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
     }
 
     private void clearGps() {
-        if (locationManager!=null && locationManager.getProvider(GPS_PROVIDER_NAME)!=null) {
+        if (locationManager != null && locationManager.getProvider(GPS_PROVIDER_NAME) != null) {
             locationManager.clearTestProviderStatus(GPS_PROVIDER_NAME);
             locationManager.clearTestProviderEnabled(GPS_PROVIDER_NAME);
             locationManager.clearTestProviderLocation(GPS_PROVIDER_NAME);
@@ -314,7 +342,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
             locationManager = null;
             locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
             locationManager.addTestProvider(GPS_PROVIDER_NAME, false, true, false, false, true, true, true,
-                    Criteria.POWER_LOW, GPS_ACCURACY);
+                    ProviderProperties.POWER_USAGE_LOW, GPS_ACCURACY);
             locationManager.setTestProviderEnabled(GPS_PROVIDER_NAME, true);
         }
         Toast.makeText(MainActivity.this, "GPS Provider cleared.", Toast.LENGTH_SHORT).show();
@@ -327,7 +355,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
         wakeLock.acquire();
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         locationManager.addTestProvider(GPS_PROVIDER_NAME, false, true, false, false, true, true, true,
-                    Criteria.POWER_LOW, GPS_ACCURACY);
+                ProviderProperties.POWER_USAGE_LOW, GPS_ACCURACY);
         locationManager.setTestProviderEnabled(GPS_PROVIDER_NAME, true);
 
         running = true;
@@ -365,15 +393,15 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 
                         DataLine dl = new DataLine(fullFile.get(pos).split(" "));
 
-                        if (dl!=null) {
+                        if (dl != null) {
                             DataLine next;
                             int nextPos;
                             if (reverse) {
-                                nextPos = pos-1;
+                                nextPos = pos - 1;
                                 if (nextPos < 0)
                                     paused = true;
                             } else {
-                                nextPos = pos+1;
+                                nextPos = pos + 1;
                                 if (nextPos >= fullFile.size())
                                     paused = true;
                             }
@@ -388,7 +416,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 
                                 next = new DataLine(fullFile.get(nextPos).split(" "));
 
-                                long waitTime = Math.abs(dl.getTime()-next.getTime());
+                                long waitTime = Math.abs(dl.getTime() - next.getTime());
 
                                 if (seeked) {
                                     seeked = false;
@@ -396,10 +424,12 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
                                 }
 
                                 long waitDiff = gen.nextInt(100);
-                                waitDiff = gen.nextBoolean()?waitDiff*-1:waitDiff;
-                                waitTime = waitTime+waitDiff;
+                                waitDiff = gen.nextBoolean() ? waitDiff * -1 : waitDiff;
+                                waitTime = waitTime + waitDiff;
 
-                                Thread.sleep(waitTime<0?0:waitTime);
+                                waitTime = waitTime / speed;
+
+                                Thread.sleep(waitTime < 0 ? 0 : waitTime);
 
                                 setMockLocation(randomizeValue(dl.getLatitude()), randomizeValue(dl.getLongitude()), randomizeAltitude(dl.getAltitude(), 0.1), dl.getAcc());
 
@@ -429,6 +459,8 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
                 buttonReplayStop.setEnabled(false);
                 buttonReplay.setEnabled(true);
                 buttonReplayPause.setEnabled(false);
+                buttonSpeedPlus.setEnabled(false);
+                buttonSpeedMinus.setEnabled(false);
                 buttonStop.setEnabled(false);
                 buttonStart.setEnabled(true);
                 buttonReverse.setEnabled(false);
@@ -437,7 +469,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
                 seekBar.setProgress(0);
                 seekBar.setEnabled(false);
                 fileNameView.setText("");
-                if (locationManager!=null && locationManager.getProvider(GPS_PROVIDER_NAME)!=null) {
+                if (locationManager != null && locationManager.getProvider(GPS_PROVIDER_NAME) != null) {
                     locationManager.clearTestProviderStatus(GPS_PROVIDER_NAME);
                     locationManager.clearTestProviderEnabled(GPS_PROVIDER_NAME);
                     locationManager.clearTestProviderLocation(GPS_PROVIDER_NAME);
@@ -538,25 +570,27 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
                         fileName = fileNames[whichButton];
                     }
                 }).setPositiveButton("OK", new DialogInterface.OnClickListener() {
-            public void onClick(DialogInterface dialog, int whichButton) {
-                if (fileName == null || fileName.length() < 1) {
-                    Toast.makeText(MainActivity.this, "No file selected.", Toast.LENGTH_SHORT).show();
-                }
-                buttonReplayStop.setEnabled(true);
-                buttonReplay.setEnabled(false);
-                buttonStop.setEnabled(false);
-                buttonStart.setEnabled(false);
-                buttonReplayPause.setEnabled(true);
-                seekBar.setEnabled(true);
-                buttonReverse.setEnabled(true);
-                fileNameView.setText(fileName);
-                startReplay();
-            }
-        }).setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
-            public void onClick(DialogInterface dialog, int whichButton) {
-                fileName = null;
-            }
-        }).create().show();
+                    public void onClick(DialogInterface dialog, int whichButton) {
+                        if (fileName == null || fileName.length() < 1) {
+                            Toast.makeText(MainActivity.this, "No file selected.", Toast.LENGTH_SHORT).show();
+                        }
+                        buttonReplayStop.setEnabled(true);
+                        buttonReplay.setEnabled(false);
+                        buttonStop.setEnabled(false);
+                        buttonStart.setEnabled(false);
+                        buttonReplayPause.setEnabled(true);
+                        seekBar.setEnabled(true);
+                        buttonReverse.setEnabled(true);
+                        buttonSpeedPlus.setEnabled(true);
+                        buttonSpeedMinus.setEnabled(true);
+                        fileNameView.setText(fileName);
+                        startReplay();
+                    }
+                }).setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int whichButton) {
+                        fileName = null;
+                    }
+                }).create().show();
     }
 
     private void stopReplay() {
@@ -592,7 +626,10 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
         } catch (Exception e) {
             e.printStackTrace();
         }
-        locationManager.requestLocationUpdates(GPS_PROVIDER_NAME, 0, 0, this);
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED)
+            return;
+        else
+            locationManager.requestLocationUpdates(GPS_PROVIDER_NAME, 0, 0, this);
     }
 
     private void saveAsFileDialog() {
