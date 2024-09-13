@@ -67,7 +67,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
     private static final int GPS_ACCURACY = ProviderProperties.ACCURACY_FINE;
     private static final String GPS_PROVIDER_NAME = LocationManager.GPS_PROVIDER;
 
-    static String VERSION = "v0.7";
+    static String VERSION = "v0.8";
 
     private static final String[] INITIAL_PERMS = {Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.WRITE_EXTERNAL_STORAGE,
@@ -76,8 +76,8 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
     private static final int LOCATION_REQUEST = 1340;
     SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd-HHmmss");
     volatile static boolean running, paused, reverse = false;
-    String fileName;
-    char schar = '|';
+    static String fileName;
+    static char schar = '|';
     static Random gen = new Random();
     volatile static int pos = 0;
     static boolean seeked = false;
@@ -86,11 +86,11 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
     static int speed = 1;
     PowerManager.WakeLock wakeLock;
 
-    LocationManager locationManager;
+    static LocationManager locationManager;
     static Button buttonStart, buttonStop, buttonReplay, buttonReplayStop, buttonReplayPause, buttonResetGps, buttonReverse, buttonSpeedPlus, buttonSpeedMinus;
     FileOutputStream f;
-    TextView textView, timeView, fileNameView;
-    SeekBar seekBar;
+    static TextView textView, timeView, fileNameView;
+    static SeekBar seekBar;
     private static GoogleMap mMap;
 
     MainActivity activity;
@@ -104,15 +104,16 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 
     public static void refreshNotification() {
         String textTmp = "Now GPS Player is PAUSED";
-        if (!paused)
+
+        if (!paused) {
             textTmp = "Now GPS Player is PLAYING/";
 
-        if (reverse)
-            textTmp = textTmp + "going Backward/";
-        else
-            textTmp = textTmp + "going Forward/";
-
-        textTmp = textTmp + "Speed " + speed;
+            if (reverse)
+                textTmp = textTmp + "going Backward/";
+            else
+                textTmp = textTmp + "going Forward/";
+            textTmp = textTmp + "Speed " + speed;
+        }
         builder.setContentText(textTmp);
         notificationManager.notify(notificationId, builder.build());
     }
@@ -245,14 +246,14 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
         buttonSpeedMinus.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                    speed--;
-                    if (speed < 1) {
-                        speed = 1;
-                        paused = true;
-                        MainActivity.refreshNotification();
-                    }
-                    buttonSpeedPlus.setText("SPEED+ (" + speed + ")");
+                speed--;
+                if (speed < 1) {
+                    speed = 1;
+                    paused = true;
+                    MainActivity.refreshNotification();
                 }
+                buttonSpeedPlus.setText("SPEED+ (" + speed + ")");
+            }
         });
         buttonReplayPause.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -364,158 +365,15 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 
         notificationManager.notify(notificationId, builder.build());
 
-        new AsyncTask() {
-            @Override
-            protected Object doInBackground(Object[] objects) {
-                try {
-                    String THEME_PATH_PREFIX = "Download";
-                    File extStorage = Environment.getExternalStorageDirectory();
-                    File root = new File(extStorage, THEME_PATH_PREFIX);
-                    File file = new File(root, fileName);
-                    ArrayList<String> fullFile = new ArrayList<>();
-                    FileInputStream fis = new FileInputStream(file);
-                    byte[] b = new byte[fis.available()];
-                    fis.read(b);
-                    StringReader sr = new StringReader(new String(b));
-                    BufferedReader br = new BufferedReader(sr);
-                    String lineTmp = br.readLine();
-                    while (lineTmp != null) {
-                        fullFile.add(lineTmp);
-                        lineTmp = br.readLine();
-                    }
-                    br.close();
+        GpsRunnerTask runner = new GpsRunnerTask();
+        runner.execute();
 
-                    seekBar.setMax(fullFile.size());
-
-                    pos = 0;
-                    while (running == true) {
-                        rotateChar();
-
-                        DataLine dl = new DataLine(fullFile.get(pos).split(" "));
-
-                        if (dl != null) {
-                            DataLine next;
-                            int nextPos;
-                            if (reverse) {
-                                nextPos = pos - 1;
-                                if (nextPos < 0)
-                                    paused = true;
-                            } else {
-                                nextPos = pos + 1;
-                                if (nextPos >= fullFile.size())
-                                    paused = true;
-                            }
-
-                            if (paused) {
-                                state = "PAUSED " + schar;
-
-                                setMockLocation(randomizeValue(dl.getLatitude()), randomizeValue(dl.getLongitude()), randomizeAltitude(dl.getAltitude(), 0.001), dl.getAcc());
-                                Thread.sleep(1000);
-                            } else {
-                                state = "PLAYING " + schar;
-
-                                next = new DataLine(fullFile.get(nextPos).split(" "));
-
-                                long waitTime = Math.abs(dl.getTime() - next.getTime());
-
-                                if (seeked) {
-                                    seeked = false;
-                                    waitTime = 1000;
-                                }
-
-                                long waitDiff = gen.nextInt(100);
-                                waitDiff = gen.nextBoolean() ? waitDiff * -1 : waitDiff;
-                                waitTime = waitTime + waitDiff;
-
-                                waitTime = waitTime / speed;
-
-                                Thread.sleep(waitTime < 0 ? 0 : waitTime);
-
-                                setMockLocation(randomizeValue(dl.getLatitude()), randomizeValue(dl.getLongitude()), randomizeAltitude(dl.getAltitude(), 0.1), dl.getAcc());
-
-                                if (reverse) {
-                                    pos--;
-                                    if (pos < 0)
-                                        paused = true;
-                                } else {
-                                    pos++;
-                                    if (pos >= fullFile.size())
-                                        paused = true;
-                                }
-                            }
-                        }
-                        publishProgress(dl.getLatitude(), dl.getLongitude(), dl.getTime());
-                    }
-                } catch (Exception e) {
-                    Log.e(TAG, "", e);
-                }
-                running = false;
-                reverse = false;
-                return null;
-            }
-
-            @Override
-            protected void onPostExecute(Object o) {
-                buttonReplayStop.setEnabled(false);
-                buttonReplay.setEnabled(true);
-                buttonReplayPause.setEnabled(false);
-                buttonSpeedPlus.setEnabled(false);
-                buttonSpeedMinus.setEnabled(false);
-                buttonStop.setEnabled(false);
-                buttonStart.setEnabled(true);
-                buttonReverse.setEnabled(false);
-                buttonReverse.setText("Reverse");
-                textView.setText("STOPPED");
-                seekBar.setProgress(0);
-                seekBar.setEnabled(false);
-                fileNameView.setText("");
-                if (locationManager != null && locationManager.getProvider(GPS_PROVIDER_NAME) != null) {
-                    locationManager.clearTestProviderStatus(GPS_PROVIDER_NAME);
-                    locationManager.clearTestProviderEnabled(GPS_PROVIDER_NAME);
-                    locationManager.clearTestProviderLocation(GPS_PROVIDER_NAME);
-                    locationManager.setTestProviderEnabled(GPS_PROVIDER_NAME, false);
-                    locationManager.removeTestProvider(GPS_PROVIDER_NAME);
-                    locationManager = null;
-                }
-                super.onPostExecute(o);
-            }
-
-            @Override
-            protected void onPreExecute() {
-                textView.setText("PLAYING");
-                super.onPreExecute();
-            }
-
-            @Override
-            protected void onProgressUpdate(Object[] values) {
-                textView.setText(state);
-                seekBar.setProgress(pos);
-                if (values != null && values.length > 2) {
-                    double latitude = (double) values[0];
-                    double longitude = (double) values[1];
-                    long time = (long) values[2];
-                    mMap.clear();
-                    LatLng mapPos = new LatLng(latitude, longitude);
-                    MarkerOptions markerOptions = new MarkerOptions();
-                    markerOptions.position(mapPos);
-                    mMap.addMarker(markerOptions);
-                    mMap.animateCamera(CameraUpdateFactory.newLatLng(mapPos));
-                    timeView.setText("" + String.format("%dm:%ds",
-                            TimeUnit.MILLISECONDS.toMinutes(time),
-                            TimeUnit.MILLISECONDS.toSeconds(time) -
-                                    TimeUnit.MINUTES.toSeconds(TimeUnit.MILLISECONDS.toMinutes(time))));
-
-                }
-                super.onProgressUpdate(values);
-            }
-        }.execute();
     }
 
     private static double randomizeValue(double start) {
         int rnd = gen.nextInt(Integer.MAX_VALUE);
         double tmp = (rnd * 0.00000000000001);
-        double res = round(start + tmp);
-        return res;
+        return round(start + tmp);
     }
 
     private static double round(double d) {
@@ -531,17 +389,13 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
         return start + (rnd * diff * 0.1);
     }
 
-    private void setMockLocation(double latitude, double longitude, double altitude, float acc) {
+    private static void setMockLocation(double latitude, double longitude, double altitude, float acc) {
         Location newLocation = new Location(GPS_PROVIDER_NAME);
         newLocation.setLatitude(latitude);
         newLocation.setLongitude(longitude);
         newLocation.setAltitude(altitude);
         newLocation.setAccuracy(acc);
         newLocation.setTime(System.currentTimeMillis());
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
-            newLocation.setElapsedRealtimeNanos(SystemClock.elapsedRealtimeNanos());
-        }
 
         try {
             locationManager.setTestProviderLocation(GPS_PROVIDER_NAME, newLocation);
@@ -691,7 +545,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
         }
     }
 
-    private void rotateChar() {
+    private static void rotateChar() {
         if (schar == '|')
             schar = '/';
         else if (schar == '/')
@@ -745,5 +599,148 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
         mMap = googleMap;
         mMap.setMaxZoomPreference(18f);
         mMap.setMinZoomPreference(18f);
+    }
+
+    private static class GpsRunnerTask extends AsyncTask {
+        @Override
+        protected Object doInBackground(Object[] objects) {
+            try {
+                String THEME_PATH_PREFIX = "Download";
+                File extStorage = Environment.getExternalStorageDirectory();
+                File root = new File(extStorage, THEME_PATH_PREFIX);
+                File file = new File(root, fileName);
+                ArrayList<String> fullFile = new ArrayList<>();
+                FileInputStream fis = new FileInputStream(file);
+                byte[] b = new byte[fis.available()];
+                fis.read(b);
+                StringReader sr = new StringReader(new String(b));
+                BufferedReader br = new BufferedReader(sr);
+                String lineTmp = br.readLine();
+                while (lineTmp != null) {
+                    fullFile.add(lineTmp);
+                    lineTmp = br.readLine();
+                }
+                br.close();
+
+                seekBar.setMax(fullFile.size());
+
+                pos = 0;
+                while (running == true) {
+                    rotateChar();
+
+                    DataLine dl = new DataLine(fullFile.get(pos).split(" "));
+
+                    if (dl != null) {
+                        DataLine next;
+                        int nextPos;
+                        if (reverse) {
+                            nextPos = pos - 1;
+                            if (nextPos < 0)
+                                paused = true;
+                        } else {
+                            nextPos = pos + 1;
+                            if (nextPos >= fullFile.size())
+                                paused = true;
+                        }
+
+                        if (paused) {
+                            state = "PAUSED " + schar;
+
+                            setMockLocation(randomizeValue(dl.getLatitude()), randomizeValue(dl.getLongitude()), randomizeAltitude(dl.getAltitude(), 0.001), dl.getAcc());
+                            Thread.sleep(1000);
+                        } else {
+                            state = "PLAYING " + schar;
+
+                            next = new DataLine(fullFile.get(nextPos).split(" "));
+
+                            long waitTime = Math.abs(dl.getTime() - next.getTime());
+
+                            if (seeked) {
+                                seeked = false;
+                                waitTime = 1000;
+                            }
+
+                            long waitDiff = gen.nextInt(100);
+                            waitDiff = gen.nextBoolean() ? waitDiff * -1 : waitDiff;
+                            waitTime = waitTime + waitDiff;
+
+                            waitTime = waitTime / speed;
+
+                            Thread.sleep(waitTime < 0 ? 0 : waitTime);
+
+                            setMockLocation(randomizeValue(dl.getLatitude()), randomizeValue(dl.getLongitude()), randomizeAltitude(dl.getAltitude(), 0.1), dl.getAcc());
+
+                            if (reverse) {
+                                pos--;
+                                if (pos < 0)
+                                    paused = true;
+                            } else {
+                                pos++;
+                                if (pos >= fullFile.size())
+                                    paused = true;
+                            }
+                        }
+                    }
+                    publishProgress(dl.getLatitude(), dl.getLongitude(), dl.getTime());
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "", e);
+            }
+            running = false;
+            reverse = false;
+            return null;
+        }
+
+        @Override
+        protected void onPostExecute(Object o) {
+            buttonReplayStop.setEnabled(false);
+            buttonReplay.setEnabled(true);
+            buttonReplayPause.setEnabled(false);
+            buttonSpeedPlus.setEnabled(false);
+            buttonSpeedMinus.setEnabled(false);
+            buttonStop.setEnabled(false);
+            buttonStart.setEnabled(true);
+            buttonReverse.setEnabled(false);
+            buttonReverse.setText("Reverse");
+            textView.setText("STOPPED");
+            seekBar.setProgress(0);
+            seekBar.setEnabled(false);
+            fileNameView.setText("");
+            if (locationManager != null && locationManager.getProvider(GPS_PROVIDER_NAME) != null) {
+                locationManager.clearTestProviderStatus(GPS_PROVIDER_NAME);
+                locationManager.clearTestProviderEnabled(GPS_PROVIDER_NAME);
+                locationManager.clearTestProviderLocation(GPS_PROVIDER_NAME);
+                locationManager.setTestProviderEnabled(GPS_PROVIDER_NAME, false);
+                locationManager.removeTestProvider(GPS_PROVIDER_NAME);
+                locationManager = null;
+            }
+        }
+
+        @Override
+        protected void onPreExecute() {
+            textView.setText("PLAYING");
+        }
+
+        @Override
+        protected void onProgressUpdate(Object[] values) {
+            textView.setText(state);
+            seekBar.setProgress(pos);
+            if (values != null && values.length > 2) {
+                double latitude = (double) values[0];
+                double longitude = (double) values[1];
+                long time = (long) values[2];
+                mMap.clear();
+                LatLng mapPos = new LatLng(latitude, longitude);
+                MarkerOptions markerOptions = new MarkerOptions();
+                markerOptions.position(mapPos);
+                mMap.addMarker(markerOptions);
+                mMap.animateCamera(CameraUpdateFactory.newLatLng(mapPos));
+                timeView.setText("" + String.format("%dm:%ds",
+                        TimeUnit.MILLISECONDS.toMinutes(time),
+                        TimeUnit.MILLISECONDS.toSeconds(time) -
+                                TimeUnit.MINUTES.toSeconds(TimeUnit.MILLISECONDS.toMinutes(time))));
+
+            }
+        }
     }
 }
