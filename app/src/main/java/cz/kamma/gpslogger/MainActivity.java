@@ -43,6 +43,7 @@ import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.SeekBar;
 import android.widget.TextView;
@@ -88,6 +89,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
 
     static LocationManager locationManager;
     static Button buttonStart, buttonStop, buttonReplay, buttonReplayStop, buttonReplayPause, buttonResetGps, buttonReverse, buttonSpeedPlus, buttonSpeedMinus;
+    static CheckBox showMap;
     FileOutputStream f;
     static TextView textView, timeView, fileNameView;
     static SeekBar seekBar;
@@ -186,6 +188,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
         seekBar = findViewById(R.id.seekBar);
         seekBar.setEnabled(false);
         seekBar.setProgress(0);
+        showMap = findViewById(R.id.showMap);
 
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
@@ -304,7 +307,6 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
                         .setNegativeButton(android.R.string.no, null).show();
             }
         });
-
 
         if (!canAccessLocation()) {
             requestPermissions(INITIAL_PERMS, LOCATION_REQUEST);
@@ -732,13 +734,15 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
                 double latitude = (double) values[0];
                 double longitude = (double) values[1];
                 long time = (long) values[2];
-                mMap.clear();
-                LatLng mapPos = new LatLng(latitude, longitude);
-                MarkerOptions markerOptions = new MarkerOptions();
-                markerOptions.position(mapPos);
-                mMap.addMarker(markerOptions);
-                mMap.animateCamera(CameraUpdateFactory.newLatLng(mapPos));
-                timeView.setText("" + String.format("%dm:%ds",
+                if (showMap.isChecked()) {
+                    mMap.clear();
+                    LatLng mapPos = new LatLng(latitude, longitude);
+                    MarkerOptions markerOptions = new MarkerOptions();
+                    markerOptions.position(mapPos);
+                    mMap.addMarker(markerOptions);
+                    mMap.animateCamera(CameraUpdateFactory.newLatLng(mapPos));
+                }
+                timeView.setText(String.format("%dm:%ds",
                         TimeUnit.MILLISECONDS.toMinutes(time),
                         TimeUnit.MILLISECONDS.toSeconds(time) -
                                 TimeUnit.MINUTES.toSeconds(TimeUnit.MILLISECONDS.toMinutes(time))));

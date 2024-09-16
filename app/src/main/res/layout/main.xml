@@ -57,6 +57,15 @@
                 android:layout_weight="1"
                 android:text="Stop Replay" />
 
+            <CheckBox
+                android:id="@+id/showMap"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:checked="true"
+                android:clickable="true"
+                android:text="Enable map" />
+
         </LinearLayout>
 
         <LinearLayout
