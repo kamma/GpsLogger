@@ -68,7 +68,7 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
     private static final int GPS_ACCURACY = ProviderProperties.ACCURACY_FINE;
     private static final String GPS_PROVIDER_NAME = LocationManager.GPS_PROVIDER;
 
-    static String VERSION = "v0.8";
+    static String VERSION = "v0.8.1";
 
     private static final String[] INITIAL_PERMS = {Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.WRITE_EXTERNAL_STORAGE,
