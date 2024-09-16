@@ -396,6 +396,9 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
         newLocation.setAltitude(altitude);
         newLocation.setAccuracy(acc);
         newLocation.setTime(System.currentTimeMillis());
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
+            newLocation.setElapsedRealtimeNanos(SystemClock.elapsedRealtimeNanos());
+        }
 
         try {
             locationManager.setTestProviderLocation(GPS_PROVIDER_NAME, newLocation);
