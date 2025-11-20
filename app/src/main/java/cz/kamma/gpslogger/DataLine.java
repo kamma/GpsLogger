@@ -1,22 +1,33 @@
 package cz.kamma.gpslogger;
 
+import android.util.Log;
+
 public class DataLine {
+    private static final String TAG = DataLine.class.getSimpleName();
+    private long time;
+    private double latitude;
+    private double longitude;
+    private double altitude;
+    private float acc;
 
-    long time = 0;
-    double latitude = 0;
-    double longitude = 0;
-    double altitude = 0;
-    float acc = 4;
-
-    public DataLine(String[] data) {
-        if (data.length > 3) {
-            time = Long.parseLong(data[0]);
-            latitude = Double.parseDouble(data[1]);
-            longitude = Double.parseDouble(data[2]);
-            altitude = Double.parseDouble(data[3]);
-            acc = 4;
-            if (data.length > 4)
-                acc = Float.parseFloat(data[4]);
+    public DataLine(String[] parts) {
+        if (parts.length < 5) {
+            throw new IllegalArgumentException("Invalid data line: not enough parts");
+        }
+        try {
+            this.time = Long.parseLong(parts[0]);
+            this.latitude = Double.parseDouble(parts[1]);
+            this.longitude = Double.parseDouble(parts[2]);
+            this.altitude = Double.parseDouble(parts[3]);
+            this.acc = Float.parseFloat(parts[4]);
+        } catch (NumberFormatException e) {
+            Log.e(TAG, "Failed to parse data line", e);
+            // Initialize with safe defaults
+            this.time = 0;
+            this.latitude = 0;
+            this.longitude = 0;
+            this.altitude = 0;
+            this.acc = 0;
         }
     }
 
@@ -24,39 +35,19 @@ public class DataLine {
         return time;
     }
 
-    public void setTime(long time) {
-        this.time = time;
-    }
-
     public double getLatitude() {
         return latitude;
-    }
-
-    public void setLatitude(double latitude) {
-        this.latitude = latitude;
     }
 
     public double getLongitude() {
         return longitude;
     }
 
-    public void setLongitude(double longitude) {
-        this.longitude = longitude;
-    }
-
     public double getAltitude() {
         return altitude;
     }
 
-    public void setAltitude(double altitude) {
-        this.altitude = altitude;
-    }
-
     public float getAcc() {
         return acc;
-    }
-
-    public void setAcc(float acc) {
-        this.acc = acc;
     }
 }

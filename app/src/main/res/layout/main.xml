@@ -1,69 +1,40 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:orientation="vertical" android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical">
+        android:orientation="vertical"
+        android:padding="8dp">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/buttonStart"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Start Logging" />
-
-            <Button
-                android:id="@+id/buttonStop"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Stop Logging" />
-
-            <Button
-                android:id="@+id/buttonResetGps"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Reset GPS" />
-
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
             android:orientation="horizontal">
 
             <Button
                 android:id="@+id/startReplay"
-                android:layout_width="match_parent"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="Start Replay" />
 
             <Button
                 android:id="@+id/stopReplay"
-                android:layout_width="match_parent"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="Stop Replay" />
 
             <CheckBox
                 android:id="@+id/showMap"
-                android:layout_width="match_parent"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:checked="true"
-                android:clickable="true"
                 android:text="Enable map" />
 
         </LinearLayout>
@@ -71,98 +42,80 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:layout_weight="1"
             android:orientation="horizontal">
 
             <Button
                 android:id="@+id/buttonSpeedPlus"
-                android:layout_width="match_parent"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="SPEED+" />
 
             <Button
                 android:id="@+id/pauseReplay"
-                android:layout_width="match_parent"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="Pause Replay" />
 
             <Button
                 android:id="@+id/buttonSpeedMinus"
-                android:layout_width="match_parent"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="SPEED-" />
         </LinearLayout>
 
-        <LinearLayout
+        <Button
+            android:id="@+id/buttonReverse"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:layout_weight="1"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/buttonReverse"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Reverse (going Forward)" />
-        </LinearLayout>
+            android:layout_height="wrap_content"
+            android:text="Reverse (going Forward)" />
 
         <TextView
             android:id="@+id/textView"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:layout_span="3"
-            android:layout_weight="1"
+            android:layout_height="wrap_content"
             android:fontFamily="sans-serif"
-            android:textAlignment="center"
-            android:textSize="36sp"
+            android:gravity="center_horizontal"
+            android:text="GPS Logger"
+            android:textSize="18sp"
             android:textStyle="bold"
             android:typeface="monospace" />
 
         <TextView
             android:id="@+id/timeView"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:layout_span="3"
-            android:layout_weight="1"
+            android:layout_height="wrap_content"
             android:fontFamily="sans-serif"
-            android:textAlignment="center"
-            android:textSize="36sp"
+            android:gravity="center_horizontal"
+            android:text="0:00"
+            android:textSize="18sp"
             android:textStyle="bold"
             android:typeface="monospace" />
 
         <TextView
             android:id="@+id/fileNameView"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:layout_weight="1" />
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:gravity="center_horizontal" />
 
         <SeekBar
             android:id="@+id/seekBar"
-            style="@style/Widget.AppCompat.SeekBar.Discrete"
+            style="@style/Widget.AppCompat.SeekBar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:max="10"
-            android:progress="3" />
+            android:layout_marginTop="8dp"
+            android:max="100" />
 
     </LinearLayout>
 
-    <LinearLayout
+    <fragment
+        android:id="@+id/map"
+        class="com.google.android.gms.maps.SupportMapFragment"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:layout_weight="1"
-        android:orientation="vertical">
-
-        <fragment
-            android:id="@+id/map"
-            class="com.google.android.gms.maps.SupportMapFragment"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="10dp"
-            android:layout_weight="1" />
-    </LinearLayout>
+        android:layout_height="0dp"
+        android:layout_weight="1" />
 
 </LinearLayout>

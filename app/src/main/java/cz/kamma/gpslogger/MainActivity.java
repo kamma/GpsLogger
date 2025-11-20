@@ -1,50 +1,23 @@
 package cz.kamma.gpslogger;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.StringReader;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.Random;
-import java.util.concurrent.TimeUnit;
-
 import android.Manifest;
 import android.app.AlertDialog;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
-import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
-import android.location.Location;
-import android.location.LocationListener;
-import android.location.LocationManager;
-import android.location.provider.ProviderProperties;
-import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
-import android.os.PowerManager;
-import android.os.SystemClock;
 import android.support.v4.app.ActivityCompat;
-import android.support.v4.app.NotificationCompat;
-import android.support.v4.app.NotificationManagerCompat;
+import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AppCompatActivity;
-import android.text.InputType;
-import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.CheckBox;
-import android.widget.EditText;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -56,69 +29,69 @@ import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
 
-public class MainActivity extends AppCompatActivity implements LocationListener, OnMapReadyCallback {
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Locale;
+import java.util.concurrent.TimeUnit;
 
-    static final String TAG = MainActivity.class.getCanonicalName();
-    public static final String ACTION_PAUSE = "GPS_PLAYER_PAUSE";
-    public static final String ACTION_REVERSE = "GPS_PLAYER_REVERSE";
-    public static final String ACTION_SPEED_PLUS = "GPS_PLAYER_SPEED_PLUS";
-    public static final String ACTION_SPEED_MINUS = "GPS_PLAYER_SPEED_MINUS";
-    private static final String CHANNEL_ID = "AAA";
-    private static final int notificationId = 10001;
-    private static final int GPS_ACCURACY = ProviderProperties.ACCURACY_FINE;
-    private static final String GPS_PROVIDER_NAME = LocationManager.GPS_PROVIDER;
+public class MainActivity extends AppCompatActivity implements OnMapReadyCallback {
 
-    static String VERSION = "v0.8.1";
+    private static final String VERSION = "v1.0.0";
+    private static final String[] REQUIRED_PERMISSIONS = {
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.READ_EXTERNAL_STORAGE
+    };
+    private static final int PERMISSIONS_REQUEST_CODE = 1340;
 
-    private static final String[] INITIAL_PERMS = {Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.WRITE_EXTERNAL_STORAGE,
-            Manifest.permission.READ_EXTERNAL_STORAGE};
+    // Views
+    private Button buttonReplay, buttonReplayStop, buttonReplayPause, buttonReverse, buttonSpeedPlus, buttonSpeedMinus;
+    private CheckBox showMap;
+    private TextView textView, timeView, fileNameView;
+    private SeekBar seekBar;
+    private GoogleMap mMap;
 
-    private static final int LOCATION_REQUEST = 1340;
-    SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd-HHmmss");
-    volatile static boolean running, paused, reverse = false;
-    static String fileName;
-    static char schar = '|';
-    static Random gen = new Random();
-    volatile static int pos = 0;
-    static boolean seeked = false;
-    static String state = VERSION;
-    static long start = -1;
-    static int speed = 1;
-    PowerManager.WakeLock wakeLock;
+    private String selectedFileName;
+    private boolean isSeeking = false;
+    private ArrayList<String> replayData;
 
-    static LocationManager locationManager;
-    static Button buttonStart, buttonStop, buttonReplay, buttonReplayStop, buttonReplayPause, buttonResetGps, buttonReverse, buttonSpeedPlus, buttonSpeedMinus;
-    static CheckBox showMap;
-    FileOutputStream f;
-    static TextView textView, timeView, fileNameView;
-    static SeekBar seekBar;
-    private static GoogleMap mMap;
+    private final BroadcastReceiver statusUpdateReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (GpsLoggerService.BROADCAST_STATUS_UPDATE.equals(intent.getAction())) {
+                String status = intent.getStringExtra(GpsLoggerService.EXTRA_STATUS);
+                long time = intent.getLongExtra(GpsLoggerService.EXTRA_TIME, -1);
+                double latitude = intent.getDoubleExtra(GpsLoggerService.EXTRA_LATITUDE, 0);
+                double longitude = intent.getDoubleExtra(GpsLoggerService.EXTRA_LONGITUDE, 0);
+                ReplayState replayState = (ReplayState) intent.getSerializableExtra(GpsLoggerService.EXTRA_REPLAY_STATE);
 
-    MainActivity activity;
+                if (status != null) {
+                    textView.setText(status);
+                }
 
-    static NotificationCompat.Builder builder;
-    static NotificationManagerCompat notificationManager;
-    Intent snoozeIntentPause, snoozeIntentReverse, snoozeIntentSpeedPlus, snoozeIntentSpeedMinus;
-    PendingIntent snoozePendingIntentPause, snoozePendingIntentReverse, snoozePendingIntentSpeedPlus, snoozePendingIntentSpeedMinus;
-    BroadcastReceiver br = new MyBroadcastReceiver();
-    IntentFilter filter = new IntentFilter();
+                if (time != -1 && !isSeeking) {
+                    timeView.setText(String.format(Locale.getDefault(), "%dm:%ds",
+                            TimeUnit.MILLISECONDS.toMinutes(time),
+                            TimeUnit.MILLISECONDS.toSeconds(time) -
+                                    TimeUnit.MINUTES.toSeconds(TimeUnit.MILLISECONDS.toMinutes(time))));
+                }
 
-    public static void refreshNotification() {
-        String textTmp = "Now GPS Player is PAUSED";
-
-        if (!paused) {
-            textTmp = "Now GPS Player is PLAYING/";
-
-            if (reverse)
-                textTmp = textTmp + "going Backward/";
-            else
-                textTmp = textTmp + "going Forward/";
-            textTmp = textTmp + "Speed " + speed;
+                if (replayState != null && replayState.isReplaying()) {
+                    updateUiWithReplayState(replayState);
+                    if (latitude != 0 && longitude != 0) {
+                        updateMap(latitude, longitude);
+                    }
+                } else {
+                    resetUiToDefault();
+                }
+            }
         }
-        builder.setContentText(textTmp);
-        notificationManager.notify(notificationId, builder.build());
-    }
+    };
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -126,627 +99,246 @@ public class MainActivity extends AppCompatActivity implements LocationListener,
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(R.layout.main);
-        createNotificationChannel();
 
-        snoozeIntentPause = new Intent(this, MyBroadcastReceiver.class);
-        snoozeIntentPause.setAction(ACTION_PAUSE);
+        initViews();
+        initMap();
+        initClickListeners();
 
-        snoozeIntentReverse = new Intent(this, MyBroadcastReceiver.class);
-        snoozeIntentReverse.setAction(ACTION_REVERSE);
+        textView.setText(VERSION);
 
-        snoozeIntentSpeedPlus = new Intent(this, MyBroadcastReceiver.class);
-        snoozeIntentSpeedPlus.setAction(ACTION_SPEED_PLUS);
+        if (!hasPermissions()) {
+            ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, PERMISSIONS_REQUEST_CODE);
+        }
+    }
 
-        snoozeIntentSpeedMinus = new Intent(this, MyBroadcastReceiver.class);
-        snoozeIntentSpeedMinus.setAction(ACTION_SPEED_MINUS);
+    @Override
+    protected void onResume() {
+        super.onResume();
+        LocalBroadcastManager.getInstance(this).registerReceiver(statusUpdateReceiver,
+                new IntentFilter(GpsLoggerService.BROADCAST_STATUS_UPDATE));
+        sendCommandToService(GpsLoggerService.ACTION_REQUEST_UPDATE);
+    }
 
-        snoozePendingIntentPause = PendingIntent.getBroadcast(this, 0, snoozeIntentPause, 0);
-        snoozePendingIntentReverse = PendingIntent.getBroadcast(this, 0, snoozeIntentReverse, 0);
-        snoozePendingIntentSpeedPlus = PendingIntent.getBroadcast(this, 0, snoozeIntentSpeedPlus, 0);
-        snoozePendingIntentSpeedMinus = PendingIntent.getBroadcast(this, 0, snoozeIntentSpeedMinus, 0);
+    @Override
+    protected void onPause() {
+        super.onPause();
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(statusUpdateReceiver);
+    }
 
-        builder = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.btn_plus)
-                .setContentTitle("GPS Player")
-                .setContentText("Now GPS Player is PLAYING/going Forward/Speed 1")
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-                .setAutoCancel(false)
-                .setOngoing(true)
-                .setContentIntent(snoozePendingIntentPause)
-                .addAction(android.R.drawable.ic_media_rew, "Reverse",
-                        snoozePendingIntentReverse)
-                .addAction(android.R.drawable.ic_media_rew, "Speed+",
-                        snoozePendingIntentSpeedPlus)
-                .addAction(android.R.drawable.ic_media_rew, "Speed-",
-                        snoozePendingIntentSpeedMinus);
-
-        notificationManager = NotificationManagerCompat.from(this);
-
-        filter.addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED);
-        this.registerReceiver(br, filter);
-
-        activity = this;
-
-        buttonStart = findViewById(R.id.buttonStart);
-        buttonStop = findViewById(R.id.buttonStop);
-        buttonStop.setEnabled(false);
-        buttonResetGps = findViewById(R.id.buttonResetGps);
+    private void initViews() {
         buttonReplay = findViewById(R.id.startReplay);
         buttonReplayStop = findViewById(R.id.stopReplay);
-        buttonReplayStop.setEnabled(false);
         buttonSpeedPlus = findViewById(R.id.buttonSpeedPlus);
-        buttonSpeedPlus.setEnabled(false);
         buttonSpeedMinus = findViewById(R.id.buttonSpeedMinus);
-        buttonSpeedMinus.setEnabled(false);
+        buttonReplayPause = findViewById(R.id.pauseReplay);
+        buttonReverse = findViewById(R.id.buttonReverse);
+        showMap = findViewById(R.id.showMap);
         textView = findViewById(R.id.textView);
         timeView = findViewById(R.id.timeView);
         fileNameView = findViewById(R.id.fileNameView);
-        buttonReplayPause = findViewById(R.id.pauseReplay);
-        buttonReplayPause.setEnabled(false);
-        buttonReverse = findViewById(R.id.buttonReverse);
-        buttonReverse.setEnabled(false);
         seekBar = findViewById(R.id.seekBar);
-        seekBar.setEnabled(false);
-        seekBar.setProgress(0);
-        showMap = findViewById(R.id.showMap);
 
+        resetUiToDefault();
+    }
+
+    private void initMap() {
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map);
-        mapFragment.getMapAsync(this);
+        if (mapFragment != null) {
+            mapFragment.getMapAsync(this);
+        }
+    }
 
-        textView.setText(VERSION);
-        timeView.setText("0:00");
-
-        buttonStart.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                saveAsFileDialog();
-            }
-        });
-
-        buttonStop.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                buttonStop.setEnabled(false);
-                buttonStart.setEnabled(true);
-                buttonReplay.setEnabled(true);
-                buttonReplayStop.setEnabled(false);
-                buttonReverse.setEnabled(false);
-                textView.setText("STOPPED");
-                stopLogging();
-            }
-        });
-
-        buttonReplay.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                openSelectFileDialog();
-            }
-        });
-
-        buttonResetGps.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                clearGps();
-            }
-        });
-
-        buttonReplayStop.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                stopReplay();
-            }
-        });
-        buttonSpeedPlus.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if (paused)
-                    paused = false;
-                else
-                    speed++;
-                buttonSpeedPlus.setText("SPEED+ (" + speed + ")");
-            }
-        });
-        buttonSpeedMinus.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                speed--;
-                if (speed < 1) {
-                    speed = 1;
-                    paused = true;
-                    MainActivity.refreshNotification();
-                }
-                buttonSpeedPlus.setText("SPEED+ (" + speed + ")");
-            }
-        });
-        buttonReplayPause.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                paused = !paused;
-                MainActivity.refreshNotification();
-            }
-        });
-
-        buttonReverse.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if (reverse) {
-                    reverse = false;
-                    buttonReverse.setText("Reverse (going Forward)");
-                } else {
-                    reverse = true;
-                    buttonReverse.setText("Reverse (going Backward)");
-                }
-                MainActivity.refreshNotification();
-            }
-        });
+    private void initClickListeners() {
+        buttonReplay.setOnClickListener(v -> openSelectFileDialog());
+        buttonReplayStop.setOnClickListener(v -> sendCommandToService(GpsLoggerService.ACTION_STOP_REPLAY));
+        buttonReplayPause.setOnClickListener(v -> sendCommandToService(GpsLoggerService.ACTION_PAUSE_REPLAY));
+        buttonReverse.setOnClickListener(v -> sendCommandToService(GpsLoggerService.ACTION_TOGGLE_REVERSE));
+        buttonSpeedPlus.setOnClickListener(v -> sendCommandToService(GpsLoggerService.ACTION_SPEED_PLUS));
+        buttonSpeedMinus.setOnClickListener(v -> sendCommandToService(GpsLoggerService.ACTION_SPEED_MINUS));
 
         seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-
+                if (fromUser && replayData != null && progress < replayData.size()) {
+                    try {
+                        String line = replayData.get(progress);
+                        DataLine dataLine = new DataLine(line.split(" "));
+                        long time = dataLine.getTime();
+                        timeView.setText(String.format(Locale.getDefault(), "%dm:%ds",
+                                TimeUnit.MILLISECONDS.toMinutes(time),
+                                TimeUnit.MILLISECONDS.toSeconds(time) -
+                                        TimeUnit.MINUTES.toSeconds(TimeUnit.MILLISECONDS.toMinutes(time))));
+                    } catch (Exception e) {
+                        // Ignore parsing errors during scrub
+                    }
+                }
             }
 
             @Override
             public void onStartTrackingTouch(SeekBar seekBar) {
-
+                isSeeking = true;
             }
 
             @Override
             public void onStopTrackingTouch(SeekBar seekBar) {
-                final int tmp = seekBar.getProgress();
                 new AlertDialog.Builder(MainActivity.this)
                         .setTitle("Set position")
                         .setMessage("Do you really want to set this position?")
                         .setIcon(android.R.drawable.ic_dialog_alert)
-                        .setPositiveButton(android.R.string.yes, new DialogInterface.OnClickListener() {
-                            public void onClick(DialogInterface dialog, int whichButton) {
-                                pos = tmp;
-                                seeked = true;
-                            }
+                        .setPositiveButton(android.R.string.yes, (dialog, which) -> {
+                            Intent intent = new Intent(MainActivity.this, GpsLoggerService.class);
+                            intent.setAction(GpsLoggerService.ACTION_SEEK);
+                            intent.putExtra("position", seekBar.getProgress());
+                            sendCommandToService(intent);
+                            isSeeking = false;
                         })
-                        .setNegativeButton(android.R.string.no, null).show();
+                        .setNegativeButton(android.R.string.no, (dialog, which) -> isSeeking = false)
+                        .setOnCancelListener(dialog -> isSeeking = false)
+                        .show();
             }
         });
-
-        if (!canAccessLocation()) {
-            requestPermissions(INITIAL_PERMS, LOCATION_REQUEST);
-        }
     }
 
-    @Override
-    public void onDestroy() {
-        notificationManager.cancelAll();
-        super.onDestroy();
+    private void sendCommandToService(String action) {
+        Intent intent = new Intent(this, GpsLoggerService.class);
+        intent.setAction(action);
+        sendCommandToService(intent);
     }
 
-    private void createNotificationChannel() {
-        // Create the NotificationChannel, but only on API 26+ because
-        // the NotificationChannel class is new and not in the support library
+    private void sendCommandToService(Intent intent) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            CharSequence name = "PAUSE";
-            String description = "GPS Pause";
-            int importance = NotificationManager.IMPORTANCE_DEFAULT;
-            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, name, importance);
-            channel.setDescription(description);
-            // Register the channel with the system; you can't change the importance
-            // or other notification behaviors after this
-            NotificationManager notificationManager = getSystemService(NotificationManager.class);
-            notificationManager.createNotificationChannel(channel);
+            startForegroundService(intent);
+        } else {
+            startService(intent);
         }
     }
 
-    private void clearGps() {
-        if (locationManager != null && locationManager.getProvider(GPS_PROVIDER_NAME) != null) {
-            locationManager.clearTestProviderStatus(GPS_PROVIDER_NAME);
-            locationManager.clearTestProviderEnabled(GPS_PROVIDER_NAME);
-            locationManager.clearTestProviderLocation(GPS_PROVIDER_NAME);
-            locationManager.setTestProviderEnabled(GPS_PROVIDER_NAME, false);
-            locationManager.removeTestProvider(GPS_PROVIDER_NAME);
-            locationManager = null;
-            locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-            locationManager.addTestProvider(GPS_PROVIDER_NAME, false, true, false, false, true, true, true,
-                    ProviderProperties.POWER_USAGE_LOW, GPS_ACCURACY);
-            locationManager.setTestProviderEnabled(GPS_PROVIDER_NAME, true);
+    private void resetUiToDefault() {
+        buttonReplay.setEnabled(true);
+
+        buttonReplayStop.setEnabled(false);
+        buttonReplayPause.setEnabled(false);
+        buttonReverse.setEnabled(false);
+        buttonSpeedPlus.setEnabled(false);
+        buttonSpeedMinus.setEnabled(false);
+        seekBar.setEnabled(false);
+
+        fileNameView.setText("");
+        timeView.setText("0:00");
+        textView.setText(VERSION);
+        seekBar.setProgress(0);
+        if (replayData != null) {
+            replayData.clear();
+            replayData = null;
         }
-        Toast.makeText(MainActivity.this, "GPS Provider cleared.", Toast.LENGTH_SHORT).show();
     }
 
-    private void startReplay() {
-        PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
-        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,
-                "GPSLogger::wakeLock");
-        wakeLock.acquire();
-        locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-        locationManager.addTestProvider(GPS_PROVIDER_NAME, false, true, false, false, true, true, true,
-                ProviderProperties.POWER_USAGE_LOW, GPS_ACCURACY);
-        locationManager.setTestProviderEnabled(GPS_PROVIDER_NAME, true);
+    private void updateUiWithReplayState(ReplayState state) {
+        boolean isReplaying = state.isReplaying();
+        buttonReplay.setEnabled(!isReplaying);
 
-        running = true;
-        paused = false;
-        pos = 0;
+        buttonReplayStop.setEnabled(isReplaying);
+        buttonReplayPause.setEnabled(isReplaying);
+        buttonReverse.setEnabled(isReplaying);
+        buttonSpeedPlus.setEnabled(isReplaying);
+        buttonSpeedMinus.setEnabled(isReplaying);
+        seekBar.setEnabled(isReplaying);
 
-        notificationManager.notify(notificationId, builder.build());
-
-        GpsRunnerTask runner = new GpsRunnerTask();
-        runner.execute();
-
-    }
-
-    private static double randomizeValue(double start) {
-        int rnd = gen.nextInt(Integer.MAX_VALUE);
-        double tmp = (rnd * 0.00000000000001);
-        return round(start + tmp);
-    }
-
-    private static double round(double d) {
-        String tmp = "" + d;
-        String[] parts = tmp.split("\\.");
-        if (parts[1].length() > 14)
-            return Double.parseDouble(parts[0] + "." + parts[1].substring(0, 14));
-        return d;
-    }
-
-    private static double randomizeAltitude(double start, double diff) {
-        int rnd = gen.nextInt(100);
-        return start + (rnd * diff * 0.1);
-    }
-
-    private static void setMockLocation(double latitude, double longitude, double altitude, float acc) {
-        Location newLocation = new Location(GPS_PROVIDER_NAME);
-        newLocation.setLatitude(latitude);
-        newLocation.setLongitude(longitude);
-        newLocation.setAltitude(altitude);
-        newLocation.setAccuracy(acc);
-        newLocation.setTime(System.currentTimeMillis());
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1) {
-            newLocation.setElapsedRealtimeNanos(SystemClock.elapsedRealtimeNanos());
+        fileNameView.setText(state.getFileName());
+        buttonReverse.setText(String.format("Reverse (%s)", state.isReverse() ? "Backward" : "Forward"));
+        buttonSpeedPlus.setText(String.format("SPEED+ (%d)", state.getReplaySpeed()));
+        if (seekBar.getMax() != state.getMaxPosition()) {
+            seekBar.setMax(state.getMaxPosition());
         }
 
-        try {
-            locationManager.setTestProviderLocation(GPS_PROVIDER_NAME, newLocation);
-        } catch (Exception e) {
-            Log.e(TAG, "Error: " + e.getMessage());
+        if (!isSeeking) {
+            seekBar.setProgress(state.getCurrentPosition());
+        }
+    }
+
+    private void loadReplayFile(String fileName) {
+        replayData = new ArrayList<>();
+        File extStorage = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+        File file = new File(extStorage, fileName);
+
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(new FileInputStream(file)))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                replayData.add(line);
+            }
+        } catch (IOException e) {
+            Toast.makeText(this, "Failed to read replay file for preview.", Toast.LENGTH_SHORT).show();
+            replayData = null; // Clear data on failure
         }
     }
 
     private void openSelectFileDialog() {
-        if (!canAccessLocation()) {
-            requestPermissions(INITIAL_PERMS, LOCATION_REQUEST);
+        if (!hasPermissions()) {
+            ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, PERMISSIONS_REQUEST_CODE);
+            return;
         }
-        String THEME_PATH_PREFIX = "Download";
-        File extStorage = Environment.getExternalStorageDirectory();
-        File file = new File(extStorage, THEME_PATH_PREFIX);
 
-        final String[] fileNames = file.list();
+        File downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+        if (!downloadDir.exists()) {
+            Toast.makeText(this, "Download directory not found.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        final String[] fileNames = downloadDir.list((dir, name) -> name.toLowerCase().endsWith(".txt"));
+        if (fileNames == null || fileNames.length == 0) {
+            Toast.makeText(this, "No .txt files found in Download folder.", Toast.LENGTH_SHORT).show();
+            return;
+        }
         Arrays.sort(fileNames);
-        if (fileNames == null || fileNames.length < 1) {
-            Toast.makeText(MainActivity.this, "No file found on " + THEME_PATH_PREFIX, Toast.LENGTH_SHORT).show();
-            return;
-        }
-        new AlertDialog.Builder(MainActivity.this).setTitle("Choose file")
-                .setSingleChoiceItems(fileNames, -1, new DialogInterface.OnClickListener() {
-                    public void onClick(DialogInterface dialog, int whichButton) {
-                        fileName = fileNames[whichButton];
+
+        new AlertDialog.Builder(this).setTitle("Choose file")
+                .setSingleChoiceItems(fileNames, -1, (dialog, which) -> selectedFileName = fileNames[which])
+                .setPositiveButton("OK", (dialog, which) -> {
+                    if (selectedFileName != null) {
+                        loadReplayFile(selectedFileName);
+                        Intent intent = new Intent(this, GpsLoggerService.class);
+                        intent.setAction(GpsLoggerService.ACTION_START_REPLAY);
+                        intent.putExtra("fileName", selectedFileName);
+                        sendCommandToService(intent);
                     }
-                }).setPositiveButton("OK", new DialogInterface.OnClickListener() {
-                    public void onClick(DialogInterface dialog, int whichButton) {
-                        if (fileName == null || fileName.length() < 1) {
-                            Toast.makeText(MainActivity.this, "No file selected.", Toast.LENGTH_SHORT).show();
-                        }
-                        buttonReplayStop.setEnabled(true);
-                        buttonReplay.setEnabled(false);
-                        buttonStop.setEnabled(false);
-                        buttonStart.setEnabled(false);
-                        buttonReplayPause.setEnabled(true);
-                        seekBar.setEnabled(true);
-                        buttonReverse.setEnabled(true);
-                        buttonSpeedPlus.setEnabled(true);
-                        buttonSpeedMinus.setEnabled(true);
-                        fileNameView.setText(fileName);
-                        startReplay();
-                    }
-                }).setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
-                    public void onClick(DialogInterface dialog, int whichButton) {
-                        fileName = null;
-                    }
-                }).create().show();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
     }
 
-    private void stopReplay() {
-        running = false;
-        paused = false;
-        wakeLock.release();
-        notificationManager.cancel(notificationId);
-    }
-
-    private void stopLogging() {
-        locationManager.removeUpdates(this);
-        try {
-            f.flush();
-            f.close();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        start = -1;
-        textView.setText("STOPPED");
-        wakeLock.release();
-    }
-
-    private void startLogging() {
-        PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
-        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,
-                "GPSLogger::wakeLock");
-        wakeLock.acquire();
-        textView.setText("RECORDING");
-        locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-        File root = Environment.getExternalStorageDirectory();
-        try {
-            f = new FileOutputStream(new File(root, fileName), true);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED)
-            return;
-        else
-            locationManager.requestLocationUpdates(GPS_PROVIDER_NAME, 0, 0, this);
-    }
-
-    private void saveAsFileDialog() {
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("Save as");
-
-        final EditText input = new EditText(this);
-        input.setInputType(InputType.TYPE_CLASS_TEXT);
-        String tmpName = "gpsdata-" + (sdf.format(new Date())) + ".txt";
-        input.setText(tmpName);
-
-        builder.setPositiveButton("OK", new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-                fileName = input.getText().toString();
-                buttonStop.setEnabled(true);
-                buttonStart.setEnabled(false);
-                buttonReplay.setEnabled(false);
-                buttonReplayStop.setEnabled(false);
-                startLogging();
-            }
-        });
-        builder.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-                fileName = null;
-                dialog.cancel();
-            }
-        });
-
-        builder.setView(input);
-        input.setSelection(0, tmpName.indexOf(".txt"));
-        builder.show();
-    }
-
-    @Override
-    public void onLocationChanged(Location location) {
-        if (start == -1)
-            start = location.getTime();
-        double latitude = location.getLatitude();
-        double longitude = location.getLongitude();
-        double altitude = location.getAltitude();
-        long time = location.getTime() - start;
-        float acc = location.getAccuracy();
-
-        logData(time, latitude, longitude, altitude, acc);
-    }
-
-    private void logData(Object... vars) {
-        String data = vars[0] + " " + vars[1] + " " + vars[2] + " " + vars[3] + " " + vars[4] + "\n";
-
-        textView.setText("RECORDING " + schar);
-        rotateChar();
-
-        try {
-            f.write(data.getBytes());
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    private static void rotateChar() {
-        if (schar == '|')
-            schar = '/';
-        else if (schar == '/')
-            schar = '-';
-        else if (schar == '-')
-            schar = '\\';
-        else if (schar == '\\')
-            schar = '|';
-    }
-
-    @Override
-    public void onProviderDisabled(String provider) {
-    }
-
-    @Override
-    public void onProviderEnabled(String provider) {
-    }
-
-    @Override
-    public void onStatusChanged(String provider, int status, Bundle extras) {
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-
-        switch (requestCode) {
-            case LOCATION_REQUEST:
-                if (canAccessLocation()) {
-                    Toast.makeText(this, "GPS permission allowed", Toast.LENGTH_LONG).show();
-                } else {
-                    Toast.makeText(this, "Cannot log GPS", Toast.LENGTH_LONG).show();
-                }
-                break;
-        }
-    }
-
-    private boolean canAccessLocation() {
-        for (String perm : INITIAL_PERMS) {
-            if (!hasPermission(perm))
-                return false;
-        }
-        return true;
-    }
-
-    private boolean hasPermission(String perm) {
-        return (PackageManager.PERMISSION_GRANTED == checkSelfPermission(perm));
-    }
 
     @Override
     public void onMapReady(GoogleMap googleMap) {
         mMap = googleMap;
+        mMap.getUiSettings().setZoomControlsEnabled(true);
         mMap.setMaxZoomPreference(18f);
-        mMap.setMinZoomPreference(18f);
+        mMap.setMinZoomPreference(12f);
     }
 
-    private static class GpsRunnerTask extends AsyncTask {
-        @Override
-        protected Object doInBackground(Object[] objects) {
-            try {
-                String THEME_PATH_PREFIX = "Download";
-                File extStorage = Environment.getExternalStorageDirectory();
-                File root = new File(extStorage, THEME_PATH_PREFIX);
-                File file = new File(root, fileName);
-                ArrayList<String> fullFile = new ArrayList<>();
-                FileInputStream fis = new FileInputStream(file);
-                byte[] b = new byte[fis.available()];
-                fis.read(b);
-                StringReader sr = new StringReader(new String(b));
-                BufferedReader br = new BufferedReader(sr);
-                String lineTmp = br.readLine();
-                while (lineTmp != null) {
-                    fullFile.add(lineTmp);
-                    lineTmp = br.readLine();
-                }
-                br.close();
-
-                seekBar.setMax(fullFile.size());
-
-                pos = 0;
-                while (running == true) {
-                    rotateChar();
-
-                    DataLine dl = new DataLine(fullFile.get(pos).split(" "));
-
-                    if (dl != null) {
-                        DataLine next;
-                        int nextPos;
-                        if (reverse) {
-                            nextPos = pos - 1;
-                            if (nextPos < 0)
-                                paused = true;
-                        } else {
-                            nextPos = pos + 1;
-                            if (nextPos >= fullFile.size())
-                                paused = true;
-                        }
-
-                        if (paused) {
-                            state = "PAUSED " + schar;
-
-                            setMockLocation(randomizeValue(dl.getLatitude()), randomizeValue(dl.getLongitude()), randomizeAltitude(dl.getAltitude(), 0.001), dl.getAcc());
-                            Thread.sleep(1000);
-                        } else {
-                            state = "PLAYING " + schar;
-
-                            next = new DataLine(fullFile.get(nextPos).split(" "));
-
-                            long waitTime = Math.abs(dl.getTime() - next.getTime());
-
-                            if (seeked) {
-                                seeked = false;
-                                waitTime = 1000;
-                            }
-
-                            long waitDiff = gen.nextInt(100);
-                            waitDiff = gen.nextBoolean() ? waitDiff * -1 : waitDiff;
-                            waitTime = waitTime + waitDiff;
-
-                            waitTime = waitTime / speed;
-
-                            Thread.sleep(waitTime < 0 ? 0 : waitTime);
-
-                            setMockLocation(randomizeValue(dl.getLatitude()), randomizeValue(dl.getLongitude()), randomizeAltitude(dl.getAltitude(), 0.1), dl.getAcc());
-
-                            if (reverse) {
-                                pos--;
-                                if (pos < 0)
-                                    paused = true;
-                            } else {
-                                pos++;
-                                if (pos >= fullFile.size())
-                                    paused = true;
-                            }
-                        }
-                    }
-                    publishProgress(dl.getLatitude(), dl.getLongitude(), dl.getTime());
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "", e);
-            }
-            running = false;
-            reverse = false;
-            return null;
+    private void updateMap(double latitude, double longitude) {
+        if (mMap != null && showMap.isChecked()) {
+            LatLng position = new LatLng(latitude, longitude);
+            mMap.clear();
+            mMap.addMarker(new MarkerOptions().position(position));
+            mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(position, 17f));
         }
+    }
 
-        @Override
-        protected void onPostExecute(Object o) {
-            buttonReplayStop.setEnabled(false);
-            buttonReplay.setEnabled(true);
-            buttonReplayPause.setEnabled(false);
-            buttonSpeedPlus.setEnabled(false);
-            buttonSpeedMinus.setEnabled(false);
-            buttonStop.setEnabled(false);
-            buttonStart.setEnabled(true);
-            buttonReverse.setEnabled(false);
-            buttonReverse.setText("Reverse");
-            textView.setText("STOPPED");
-            seekBar.setProgress(0);
-            seekBar.setEnabled(false);
-            fileNameView.setText("");
-            if (locationManager != null && locationManager.getProvider(GPS_PROVIDER_NAME) != null) {
-                locationManager.clearTestProviderStatus(GPS_PROVIDER_NAME);
-                locationManager.clearTestProviderEnabled(GPS_PROVIDER_NAME);
-                locationManager.clearTestProviderLocation(GPS_PROVIDER_NAME);
-                locationManager.setTestProviderEnabled(GPS_PROVIDER_NAME, false);
-                locationManager.removeTestProvider(GPS_PROVIDER_NAME);
-                locationManager = null;
+    private boolean hasPermissions() {
+        for (String perm : REQUIRED_PERMISSIONS) {
+            if (ActivityCompat.checkSelfPermission(this, perm) != PackageManager.PERMISSION_GRANTED) {
+                return false;
             }
         }
+        return true;
+    }
 
-        @Override
-        protected void onPreExecute() {
-            textView.setText("PLAYING");
-        }
-
-        @Override
-        protected void onProgressUpdate(Object[] values) {
-            textView.setText(state);
-            seekBar.setProgress(pos);
-            if (values != null && values.length > 2) {
-                double latitude = (double) values[0];
-                double longitude = (double) values[1];
-                long time = (long) values[2];
-                if (showMap.isChecked()) {
-                    mMap.clear();
-                    LatLng mapPos = new LatLng(latitude, longitude);
-                    MarkerOptions markerOptions = new MarkerOptions();
-                    markerOptions.position(mapPos);
-                    mMap.addMarker(markerOptions);
-                    mMap.animateCamera(CameraUpdateFactory.newLatLng(mapPos));
-                }
-                timeView.setText(String.format("%dm:%ds",
-                        TimeUnit.MILLISECONDS.toMinutes(time),
-                        TimeUnit.MILLISECONDS.toSeconds(time) -
-                                TimeUnit.MINUTES.toSeconds(TimeUnit.MILLISECONDS.toMinutes(time))));
-
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == PERMISSIONS_REQUEST_CODE) {
+            if (!hasPermissions()) {
+                Toast.makeText(this, "Permissions are required to run the app.", Toast.LENGTH_LONG).show();
+                finish(); // Close the app if permissions are denied
             }
         }
     }
