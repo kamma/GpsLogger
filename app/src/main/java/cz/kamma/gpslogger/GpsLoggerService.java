@@ -1,6 +1,7 @@
 package cz.kamma.gpslogger;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -9,6 +10,7 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.PixelFormat;
 import android.location.Location;
 import android.location.LocationManager;
 import android.location.provider.ProviderProperties;
@@ -20,11 +22,18 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.os.PowerManager;
 import android.os.SystemClock;
+import android.provider.Settings;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 import android.support.annotation.Nullable;
+import android.view.Gravity;
+import android.view.LayoutInflater;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.WindowManager;
+import android.widget.ImageButton;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -79,6 +88,10 @@ public class GpsLoggerService extends Service {
     private final Random random = new Random();
     private char statusChar = '|';
 
+    // Overlay
+    private WindowManager windowManager;
+    private View overlayView;
+
     public class LocalBinder extends Binder {
         GpsLoggerService getService() {
             return GpsLoggerService.this;
@@ -92,6 +105,7 @@ public class GpsLoggerService extends Service {
         PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
         wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "GPSLogger::wakeLock");
         executorService = Executors.newSingleThreadExecutor();
+        windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
     }
 
     @Override
@@ -142,6 +156,7 @@ public class GpsLoggerService extends Service {
         }
         executorService.shutdownNow();
         clearGpsProvider();
+        removeOverlay();
         super.onDestroy();
     }
 
@@ -170,10 +185,14 @@ public class GpsLoggerService extends Service {
             setupGpsProvider();
             isReplaying = true;
             isPaused = false;
+            isReverse = false;
             replayPosition = 0;
             wakeLock.acquire();
             startForeground(NOTIFICATION_ID, createReplayNotification());
             executorService.submit(new GpsReplayTask());
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(this)) {
+                showOverlay();
+            }
         } catch (IOException e) {
             Log.e(TAG, "Failed to start replay", e);
             broadcastStatus("Error: " + e.getMessage());
@@ -190,6 +209,7 @@ public class GpsLoggerService extends Service {
         clearGpsProvider();
         broadcastStatus("STOPPED");
         stopForeground(true);
+        removeOverlay();
         stopSelf();
     }
 
@@ -200,6 +220,7 @@ public class GpsLoggerService extends Service {
                 replaySpeed = 1;
             }
             updateNotification();
+            updateOverlay();
             broadcastReplayProgress(null);
         }
     }
@@ -208,6 +229,7 @@ public class GpsLoggerService extends Service {
         if (isReplaying) {
             isReverse = !isReverse;
             updateNotification();
+            updateOverlay();
             broadcastReplayProgress(null);
         }
     }
@@ -368,6 +390,96 @@ public class GpsLoggerService extends Service {
             intent.putExtra(EXTRA_TIME, dl.getTime());
         }
         LocalBroadcastManager.getInstance(this).sendBroadcast(intent);
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    private void showOverlay() {
+        if (overlayView != null) return;
+
+        final WindowManager.LayoutParams params;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            params = new WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.WRAP_CONTENT,
+                    WindowManager.LayoutParams.WRAP_CONTENT,
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                    PixelFormat.TRANSLUCENT);
+        } else {
+            params = new WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.WRAP_CONTENT,
+                    WindowManager.LayoutParams.WRAP_CONTENT,
+                    WindowManager.LayoutParams.TYPE_PHONE,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                    PixelFormat.TRANSLUCENT);
+        }
+
+        params.gravity = Gravity.TOP | Gravity.START;
+        params.x = 0;
+        params.y = 100;
+
+        overlayView = LayoutInflater.from(this).inflate(R.layout.overlay_controls, null);
+
+        overlayView.findViewById(R.id.overlay_button_speed_minus).setOnClickListener(v -> sendCommandToService(ACTION_SPEED_MINUS));
+        overlayView.findViewById(R.id.overlay_button_reverse).setOnClickListener(v -> sendCommandToService(ACTION_TOGGLE_REVERSE));
+        overlayView.findViewById(R.id.overlay_button_play_pause).setOnClickListener(v -> sendCommandToService(ACTION_PAUSE_REPLAY));
+        overlayView.findViewById(R.id.overlay_button_speed_plus).setOnClickListener(v -> sendCommandToService(ACTION_SPEED_PLUS));
+
+        overlayView.setOnTouchListener(new View.OnTouchListener() {
+            private int initialX;
+            private int initialY;
+            private float initialTouchX;
+            private float initialTouchY;
+
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                switch (event.getAction()) {
+                    case MotionEvent.ACTION_DOWN:
+                        initialX = params.x;
+                        initialY = params.y;
+                        initialTouchX = event.getRawX();
+                        initialTouchY = event.getRawY();
+                        return true;
+                    case MotionEvent.ACTION_UP:
+                        return true;
+                    case MotionEvent.ACTION_MOVE:
+                        params.x = initialX + (int) (event.getRawX() - initialTouchX);
+                        params.y = initialY + (int) (event.getRawY() - initialTouchY);
+                        windowManager.updateViewLayout(overlayView, params);
+                        return true;
+                }
+                return false;
+            }
+        });
+
+        windowManager.addView(overlayView, params);
+        updateOverlay();
+    }
+
+    private void updateOverlay() {
+        if (overlayView != null) {
+            ImageButton playPauseButton = overlayView.findViewById(R.id.overlay_button_play_pause);
+            playPauseButton.setImageResource(isPaused ? android.R.drawable.ic_media_play : android.R.drawable.ic_media_pause);
+
+            ImageButton reverseButton = overlayView.findViewById(R.id.overlay_button_reverse);
+            reverseButton.setImageResource(isReverse ? android.R.drawable.ic_media_rew : android.R.drawable.ic_media_ff);
+        }
+    }
+
+    private void sendCommandToService(String action) {
+        Intent intent = new Intent(this, GpsLoggerService.class);
+        intent.setAction(action);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent);
+        } else {
+            startService(intent);
+        }
+    }
+
+    private void removeOverlay() {
+        if (overlayView != null) {
+            windowManager.removeView(overlayView);
+            overlayView = null;
+        }
     }
 
     private class GpsReplayTask implements Runnable {

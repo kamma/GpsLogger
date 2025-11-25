@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/overlay_controls"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:background="#80000000"
+    android:padding="4dp">
+
+    <ImageButton
+        android:id="@+id/overlay_button_speed_minus"
+        style="?android:attr/borderlessButtonStyle"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:src="@android:drawable/arrow_down_float"
+        android:contentDescription="Speed-" />
+
+    <ImageButton
+        android:id="@+id/overlay_button_reverse"
+        style="?android:attr/borderlessButtonStyle"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:src="@android:drawable/ic_media_ff"
+        android:contentDescription="Reverse" />
+
+    <ImageButton
+        android:id="@+id/overlay_button_play_pause"
+        style="?android:attr/borderlessButtonStyle"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:src="@android:drawable/ic_media_pause"
+        android:contentDescription="Play/Pause" />
+
+    <ImageButton
+        android:id="@+id/overlay_button_speed_plus"
+        style="?android:attr/borderlessButtonStyle"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:src="@android:drawable/arrow_up_float"
+        android:contentDescription="Speed+" />
+
+</LinearLayout>
