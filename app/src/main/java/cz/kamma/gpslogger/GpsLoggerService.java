@@ -7,8 +7,10 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.graphics.PixelFormat;
 import android.location.Location;
@@ -34,6 +36,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.ImageButton;
+import android.widget.TextView;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -41,6 +44,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
+import java.util.Locale;
 import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -106,6 +110,7 @@ public class GpsLoggerService extends Service {
         wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "GPSLogger::wakeLock");
         executorService = Executors.newSingleThreadExecutor();
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+        startForeground(NOTIFICATION_ID, createReplayNotification());
     }
 
     @Override
@@ -141,7 +146,11 @@ public class GpsLoggerService extends Service {
                 changeSpeed(-1);
                 break;
             case ACTION_REQUEST_UPDATE:
-                broadcastReplayProgress(null);
+                if (!isReplaying) {
+                    stopSelf();
+                } else {
+                    broadcastReplayProgress(null);
+                }
                 break;
         }
 
@@ -177,6 +186,7 @@ public class GpsLoggerService extends Service {
         }
         if (replayFileName == null) {
             Log.e(TAG, "Replay file name is null.");
+            stopSelf();
             return;
         }
 
@@ -188,7 +198,7 @@ public class GpsLoggerService extends Service {
             isReverse = false;
             replayPosition = 0;
             wakeLock.acquire();
-            startForeground(NOTIFICATION_ID, createReplayNotification());
+            updateNotification();
             executorService.submit(new GpsReplayTask());
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(this)) {
                 showOverlay();
@@ -238,8 +248,8 @@ public class GpsLoggerService extends Service {
         if (isReplaying) {
             if (isPaused && delta > 0) {
                 isPaused = false; // Unpause when increasing speed
-            } else if (isPaused && delta > 0) {
-                isPaused = false; // Unpause when decreasing speed
+            } else if (isPaused && delta < 0 && replaySpeed == 1) {
+                 // do nothing, speed is already at minimum
             } else {
                 replaySpeed += delta;
                 if (replaySpeed < 1) {
@@ -247,6 +257,7 @@ public class GpsLoggerService extends Service {
                 }
             }
             updateNotification();
+            updateOverlay();
             broadcastReplayProgress(null);
         }
     }
@@ -334,7 +345,12 @@ public class GpsLoggerService extends Service {
 
     private Notification createReplayNotification() {
         createNotificationChannel();
-        String text = isPaused ? "Replay is PAUSED" : "Replaying / " + (isReverse ? "Backward" : "Forward") + " / Speed " + replaySpeed;
+        String text;
+        if (isReplaying) {
+            text = isPaused ? "Replay is PAUSED" : "Replaying / " + (isReverse ? "Backward" : "Forward") + " / Speed " + replaySpeed;
+        } else {
+            text = "GPS Logger is waiting";
+        }
 
         int pauseIcon = isPaused ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play;
 
@@ -350,17 +366,20 @@ public class GpsLoggerService extends Service {
         Intent speedMinusIntent = new Intent(this, GpsLoggerService.class).setAction(ACTION_SPEED_MINUS);
         PendingIntent speedMinusPendingIntent = PendingIntent.getService(this, 4, speedMinusIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
-        return new NotificationCompat.Builder(this, CHANNEL_ID)
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("GPS Replay")
                 .setContentText(text)
                 .setSmallIcon(pauseIcon)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
-                .setContentIntent(pausePendingIntent)
-                .addAction(android.R.drawable.ic_media_rew, "Reverse", reversePendingIntent)
-                .addAction(android.R.drawable.arrow_up_float, "Speed+", speedPlusPendingIntent)
-                .addAction(android.R.drawable.arrow_down_float, "Speed-", speedMinusPendingIntent)
-                .build();
+                .setContentIntent(pausePendingIntent);
+
+        if(isReplaying) {
+            builder.addAction(android.R.drawable.ic_media_rew, "Reverse", reversePendingIntent)
+                    .addAction(android.R.drawable.arrow_up_float, "Speed+", speedPlusPendingIntent)
+                    .addAction(android.R.drawable.arrow_down_float, "Speed-", speedMinusPendingIntent);
+        }
+        return builder.build();
     }
 
     private void createNotificationChannel() {
@@ -462,6 +481,9 @@ public class GpsLoggerService extends Service {
 
             ImageButton reverseButton = overlayView.findViewById(R.id.overlay_button_reverse);
             reverseButton.setImageResource(isReverse ? android.R.drawable.ic_media_rew : android.R.drawable.ic_media_ff);
+
+            TextView speedIndicator = overlayView.findViewById(R.id.overlay_speed_indicator);
+            speedIndicator.setText(String.format(Locale.getDefault(), "%dx", replaySpeed));
         }
     }
 

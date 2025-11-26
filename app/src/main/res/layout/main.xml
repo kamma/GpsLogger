@@ -39,39 +39,6 @@
 
         </LinearLayout>
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/buttonSpeedPlus"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="SPEED+" />
-
-            <Button
-                android:id="@+id/pauseReplay"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Pause Replay" />
-
-            <Button
-                android:id="@+id/buttonSpeedMinus"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="SPEED-" />
-        </LinearLayout>
-
-        <Button
-            android:id="@+id/buttonReverse"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Reverse (going Forward)" />
-
         <TextView
             android:id="@+id/textView"
             android:layout_width="match_parent"
