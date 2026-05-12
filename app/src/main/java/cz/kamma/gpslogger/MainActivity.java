@@ -61,7 +61,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private static final int PERMISSIONS_REQUEST_CODE = 1340;
 
     // Views
-    private Button buttonReplay, buttonReplayStop, buttonReplayPause, buttonReverse, buttonSpeedPlus, buttonSpeedMinus;
+    private Button buttonReplay, buttonReplayStop;
     private CheckBox showMap;
     private TextView textView, timeView, fileNameView;
     private SeekBar seekBar;
@@ -140,10 +140,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private void initViews() {
         buttonReplay = findViewById(R.id.startReplay);
         buttonReplayStop = findViewById(R.id.stopReplay);
-        buttonSpeedPlus = findViewById(R.id.buttonSpeedPlus);
-        buttonSpeedMinus = findViewById(R.id.buttonSpeedMinus);
-        buttonReplayPause = findViewById(R.id.pauseReplay);
-        buttonReverse = findViewById(R.id.buttonReverse);
         showMap = findViewById(R.id.showMap);
         textView = findViewById(R.id.textView);
         timeView = findViewById(R.id.timeView);
@@ -163,10 +159,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
     private void initClickListeners() {
         buttonReplay.setOnClickListener(v -> openSelectFileDialog());
         buttonReplayStop.setOnClickListener(v -> sendCommandToService(GpsLoggerService.ACTION_STOP_REPLAY));
-        buttonReplayPause.setOnClickListener(v -> sendCommandToService(GpsLoggerService.ACTION_PAUSE_REPLAY));
-        buttonReverse.setOnClickListener(v -> sendCommandToService(GpsLoggerService.ACTION_TOGGLE_REVERSE));
-        buttonSpeedPlus.setOnClickListener(v -> sendCommandToService(GpsLoggerService.ACTION_SPEED_PLUS));
-        buttonSpeedMinus.setOnClickListener(v -> sendCommandToService(GpsLoggerService.ACTION_SPEED_MINUS));
 
         seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
@@ -237,10 +229,6 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         buttonReplay.setEnabled(true);
 
         buttonReplayStop.setEnabled(false);
-        buttonReplayPause.setEnabled(false);
-        buttonReverse.setEnabled(false);
-        buttonSpeedPlus.setEnabled(false);
-        buttonSpeedMinus.setEnabled(false);
         seekBar.setEnabled(false);
 
         fileNameView.setText("");
@@ -258,15 +246,9 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
         buttonReplay.setEnabled(!isReplaying);
 
         buttonReplayStop.setEnabled(isReplaying);
-        buttonReplayPause.setEnabled(isReplaying);
-        buttonReverse.setEnabled(isReplaying);
-        buttonSpeedPlus.setEnabled(isReplaying);
-        buttonSpeedMinus.setEnabled(isReplaying);
         seekBar.setEnabled(isReplaying);
 
         fileNameView.setText(state.getFileName());
-        buttonReverse.setText(String.format("Reverse (%s)", state.isReverse() ? "Backward" : "Forward"));
-        buttonSpeedPlus.setText(String.format("SPEED+ (%d)", state.getReplaySpeed()));
         if (seekBar.getMax() != state.getMaxPosition()) {
             seekBar.setMax(state.getMaxPosition());
         }
